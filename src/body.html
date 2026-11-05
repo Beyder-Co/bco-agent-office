@@ -1,0 +1,105 @@
+<div id="stage" aria-label="Agent Office — the 3D room"></div>
+<div id="labels" aria-hidden="true"></div>
+
+<header id="topbar">
+  <div class="brand">
+    <span class="wordmark" aria-label="Beyder&amp;Co. Realty">BEYDER<i>&amp;</i>CO. REALTY</span>
+    <span class="sep" aria-hidden="true"></span>
+    <span class="title">AGENT OFFICE</span>
+  </div>
+  <nav id="counts" aria-label="Crew status"></nav>
+  <div class="actions">
+    <div class="views" role="group" aria-label="Camera views">
+      <button type="button" data-view="overview" aria-pressed="true">Overview</button>
+      <button type="button" data-view="hudson" aria-pressed="false">The Hudson</button>
+      <button type="button" data-view="desks" aria-pressed="false">Desks</button>
+      <button type="button" data-view="boardroom" aria-pressed="false">Market Room</button>
+      <button type="button" data-view="datawall" aria-pressed="false">Data Wall</button>
+      <button type="button" data-view="door" aria-pressed="false">The Door</button>
+    </div>
+    <select id="viewSelect" aria-label="Camera view">
+      <option value="overview">Overview</option>
+      <option value="hudson">The Hudson</option>
+      <option value="desks">Desks</option>
+      <option value="boardroom">Market Room</option>
+      <option value="datawall">Data Wall</option>
+      <option value="hotlist">Hot list</option>
+      <option value="screen">Forum screen</option>
+      <option value="server">Server cabinet</option>
+      <option value="lounge">Left lounge</option>
+      <option value="reading">Right lounge</option>
+      <option value="door">The Door</option>
+    </select>
+    <span class="sp"></span>
+    <details id="officeMore" class="office-more"><summary id="moreSummary">More</summary><div class="office-more-menu">
+    <button type="button" id="btnBoard" class="btn" aria-pressed="false"><span>Task board</span></button>
+    <button type="button" id="btnAdd" class="btn ink"><span aria-hidden="true">+</span><span>Add <span class="lbl-long">agent</span></span></button>
+    <button type="button" id="btnFull" class="iconbtn" aria-label="Full screen" title="Full screen">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/></svg>
+    </button>
+    </div></details>
+    <div class="clock" aria-label="Eastern time"><span id="clock" class="tnum">—</span><small>ET</small></div>
+  </div>
+</header>
+
+<aside id="roster" class="sheet" aria-label="The crew">
+  <div class="rail-head">
+    <span class="eyebrow">The crew</span>
+    <span class="meta" id="deskCount">8 agents · room for 2 more</span>
+    <button type="button" id="rosterToggle" class="closeX" aria-label="Collapse the crew list" title="Collapse">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5"/></svg>
+    </button>
+  </div>
+  <ol id="rosterList"></ol>
+  <p class="feed" id="feedNote"><b>Simulated feed.</b> Activity is simulated until the Studio bridge is live. Crimson's two gates are real.</p>
+</aside>
+
+<aside id="panel" class="sheet" hidden aria-label="Agent detail"></aside>
+
+<div id="hovercard" class="sheet" hidden role="dialog" aria-label="Agent summary"></div>
+
+<section id="gate" class="sheet" hidden aria-live="polite" aria-label="Approval needed"></section>
+
+<section id="board" class="sheet" hidden aria-label="Crew task board">
+  <div class="b-head">
+    <h2>Crew task board</h2>
+    <span class="meta" id="boardMeta"></span>
+    <div class="b-gate" id="boardGate" hidden aria-live="polite"></div>
+    <button type="button" class="closeX" id="boardClose" aria-label="Close the task board">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg>
+    </button>
+  </div>
+  <div class="cols">
+    <section class="col"><div class="col-h"><span class="eyebrow">Queued</span><span class="n" id="nQueued">0</span></div><ol class="cards" id="colQueued"></ol></section>
+    <section class="col"><div class="col-h"><span class="eyebrow">In progress</span><span class="n" id="nProgress">0</span></div><ol class="cards" id="colProgress"></ol></section>
+    <section class="col"><div class="col-h"><span class="eyebrow">Done</span><span class="n" id="nDone">0</span></div><ol class="cards" id="colDone"></ol></section>
+  </div>
+</section>
+
+<div id="mirror" hidden role="dialog" aria-modal="true" aria-label="Main screen"></div>
+
+<div id="addModal" hidden role="dialog" aria-modal="true" aria-labelledby="addTitle">
+  <div class="dialog sheet">
+    <div class="d-head">
+      <div>
+        <div class="eyebrow">New agent</div>
+        <h2 id="addTitle">Bring an agent aboard</h2>
+      </div>
+      <button type="button" class="closeX" id="addClose" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg>
+      </button>
+    </div>
+    <ol class="steps" id="addSteps">
+      <li>1 · Display</li><li>2 · Scope</li><li>3 · Details</li><li>4 · Aboard</li>
+    </ol>
+    <div class="d-body" id="addBody"></div>
+    <div class="d-foot">
+      <span class="err" id="addErr" role="alert"></span>
+      <span class="sp"></span>
+      <button type="button" class="btn" id="addBack">Back</button>
+      <button type="button" class="btn ink" id="addNext">Next</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
