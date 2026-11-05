@@ -36,6 +36,17 @@
   ],
   "redirects": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "bco-agent-office.vercel.app"
+        }
+      ],
+      "destination": "https://office.beyderco.com/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [
         {
