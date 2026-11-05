@@ -60,7 +60,7 @@ function resolveBridgeUrl() {
 
 /** The bridge's own report: which feeds are healthy, and whether it drives the crew. */
 function applyBridgeMeta(m) {
-  if ((m.buildId && window.BCO_BUILD && m.buildId !== window.BCO_BUILD) || (m.pageVersion && m.pageVersion !== '8.8.0')) { location.reload(); return; }
+  if ((m.buildId && window.BCO_BUILD && m.buildId !== window.BCO_BUILD) || (m.pageVersion && m.pageVersion !== '8.8.1')) { location.reload(); return; }
   const was = OFFICE_STATE.meta.bridge && OFFICE_STATE.meta.bridge.drivesAgents;
   OFFICE_STATE.meta.bridge = { version: m.version, readOnly: m.readOnly !== false, drivesAgents: !!m.drivesAgents, feeds: m.feeds || {}, testData: !!m.testData, commands: m.commands || null };
   for (const [id,role] of Object.entries(m.commands?.roles || {})) if (OFFICE_STATE.agents[id]) Object.assign(OFFICE_STATE.agents[id],role);
@@ -79,7 +79,7 @@ function applyBridgeEvent(m) {
   if (!m || typeof m !== 'object') return;
   switch (m.type) {
     case 'heartbeat':
-      if ((m.buildId && window.BCO_BUILD && m.buildId !== window.BCO_BUILD) || (m.pageVersion && m.pageVersion !== '8.8.0')) location.reload();
+      if ((m.buildId && window.BCO_BUILD && m.buildId !== window.BCO_BUILD) || (m.pageVersion && m.pageVersion !== '8.8.1')) location.reload();
       return;
     case 'status': {
       const ag = OFFICE_STATE.agents[m.id];
@@ -99,7 +99,7 @@ function applyBridgeEvent(m) {
     case 'agent':
       return addAgent(m.agent || {});
     case 'hotsheet':
-      return setHotSheet({ rows: Array.isArray(m.rows) ? m.rows : [], asOf: m.asOf, source: m.source, replace: m.replace !== false, status: m.status, note: m.note, staleAfter: m.staleAfter, fileAgeSeconds: m.fileAgeSeconds, fileAsOf: m.fileAsOf });
+      return setHotSheet({ rows: Array.isArray(m.rows) ? m.rows : [], asOf: m.asOf, source: m.source, replace: m.replace !== false, status: m.status, note: m.note, staleAfter: m.staleAfter, fileAgeSeconds: m.fileAgeSeconds, fileAsOf: m.fileAsOf, nextRun:m.nextRun });
     case 'panel':
       return setPanel(m.key, m.data || {});
     case 'ticker':
@@ -137,7 +137,8 @@ function applyBridgeEvent(m) {
 }
 
 function connectBridge(url) {
-  if (!resolveBridgeUrl() || url !== resolveBridgeUrl()) return;
+  if (!resolveBridgeUrl() || url !== resolveBridgeUrl() || OFFICE_RUNTIME.transportStarted) return;
+  OFFICE_RUNTIME.transportStarted=true;
   let ws = null;
   let retry = 1000, retryTimer = null, lastMessage = performance.now();
   const schedule = () => { if (retryTimer !== null) return; retryTimer = setTimeout(() => { retryTimer = null; open(); }, retry); retry = Math.min(retry * 2, 15000); };

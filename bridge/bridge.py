@@ -63,7 +63,7 @@ except Exception:  # pragma: no cover - zoneinfo ships with 3.9+
     ET = timezone(timedelta(hours=-5))
 
 VERSION = "1.6.0"
-PAGE_VERSION = "8.8.0"
+PAGE_VERSION = "8.8.1"
 HOME = Path.home()
 
 
@@ -566,7 +566,7 @@ def build_today(tasks: list, appointments: list, names: dict, now: datetime, hid
         kind = typ.get("name") if isinstance(typ, dict) else typ
         events.append({
             "time": when,
-            "title": discreet_title(appt.get("title"), appt.get("invitees")),
+            "title": discreet_title(appt.get("title"), appt.get("invitees")), "createdAt":appt.get("created") or iso_z(start),
             "where": short_place(appt.get("location")) or None,
             "kind": str(kind or "appointment").strip().lower(),
             "_k": start,
@@ -1043,9 +1043,22 @@ def is_approval_task(task: dict) -> bool:
     return any(m in low for m in APPROVAL_MARKS)
 
 
+def merge_text(value, person=None):
+    person = person or {}
+    fields = {"firstname":person.get("firstName"), "lastname":person.get("lastName"),
+              "fullname":" ".join(str(person.get(k) or "") for k in ("firstName","lastName")).strip(),
+              "name":" ".join(str(person.get(k) or "") for k in ("firstName","lastName")).strip()}
+    def replace(match):
+        key = re.sub(r"[^a-z]", "", match.group(1).lower())
+        if key.startswith("contact"):key=key[7:]
+        if key.startswith("person"):key=key[6:]
+        return str(fields.get(key) or "")
+    return re.sub(r"%([A-Za-z][A-Za-z0-9_.:-]{0,99})%",replace,str(value or ""))
+
+
 def clean_task_name(name: str, person: dict) -> str:
     """A task's own words and complete contact name, with machine markers removed."""
-    s = str(name or "").strip()
+    s = merge_text(name, person).strip()
     full = " ".join(x for x in ((person or {}).get("firstName"), (person or {}).get("lastName")) if x).strip()
     if full:
         s = re.sub(re.escape(full), display_name(person.get("firstName"), person.get("lastName")), s, flags=re.IGNORECASE)
@@ -1064,7 +1077,7 @@ def build_needs(tasks: list, appointments: list, recent_people: list, people: di
     today = now.astimezone(ET).date()
     items = []
     for s in system or []:
-        items.append(dict({"group": "system", "kind": "system", "rank": 0}, **s))
+        items.append(dict({"group": "system", "kind": "system", "rank": 0, "createdAt":s.get("at") or iso_z(now)}, **s))
     for t in tasks or []:
         pid = t.get("personId")
         if t.get("isCompleted") or pid in hidden:
@@ -1075,7 +1088,7 @@ def build_needs(tasks: list, appointments: list, recent_people: list, people: di
             continue
         if not pid:
             # a task on no contact is the fleet asking Igor for something only he can do (a sign-in, a stale feed)
-            items.append({"group": "system", "kind": "system", "id": f"fub-task-{t.get('id')}", "taskId": t.get("id"),
+            items.append({"group": "system", "kind": "system", "id": f"fub-task-{t.get('id')}", "taskId": t.get("id"), "createdAt":t.get("created") or t.get("dueDateTime") or t.get("dueDate"),
                           "title": clean_task_name(t.get("name"), {}) or "A task from the fleet",
                           "when": days_ago(d, today) if d < today else "Today", "overdue": d < today,
                           "link": f"https://{domain}.followupboss.com/2/tasks", "rank": 0, "_k": (d.isoformat(), "")})
@@ -1091,13 +1104,13 @@ def build_needs(tasks: list, appointments: list, recent_people: list, people: di
         typ = str(t.get("type") or "Task")
         who = display_name(person.get("firstName"), person.get("lastName")) if person else "Contact"
         item = {"group": "overdue" if overdue else ("approval" if approval else "today"),
-                "kind": "approval" if approval else "task", "id": f"fub-task-{t.get('id')}", "taskId": t.get("id"),
+                "kind": "approval" if approval else "task", "id": f"fub-task-{t.get('id')}", "taskId": t.get("id"), "createdAt":t.get("created") or t.get("dueDateTime") or t.get("dueDate"),
                 "pid": pid, "who": who, "type": typ, "title": clean_task_name(t.get("name"), person) or f"{typ} · {who}",
                 "when": when, "overdue": overdue, "agent": task_agent(t.get("name")),
                 "link": fub_person_url(pid, domain), "rank": 1 if overdue else (2 if approval else 3),
                 "_k": (d.isoformat(), t.get("dueDateTime") or "")}
         if note:
-            item["draft"] = _plain(note.get("body"), limit=0)
+            item["draft"] = merge_text(_plain(note.get("body"), limit=0), person)
             item["prep"] = m.group(1) + " Prep"
         items.append(item)
     for appt in appointments or []:
@@ -1115,7 +1128,7 @@ def build_needs(tasks: list, appointments: list, recent_people: list, people: di
             continue  # already over
         invitee = next((i for i in appt.get("invitees") or [] if i.get("personId") and i.get("personId") not in hidden), None)
         items.append({"group": "appointment", "kind": "appointment", "id": f"fub-appt-{appt.get('id')}",
-                      "title": discreet_title(appt.get("title"), appt.get("invitees")),
+                      "title": discreet_title(appt.get("title"), appt.get("invitees")), "createdAt":appt.get("created") or iso_z(start),
                       "where": short_place(appt.get("location")) or None,
                       "when": "All day" if all_day else fmt_time(start), "rank": 4,
                       "link": fub_person_url(invitee.get("personId"), domain) if invitee else f"https://{domain}.followupboss.com/2/calendar",
@@ -1130,9 +1143,14 @@ def build_needs(tasks: list, appointments: list, recent_people: list, people: di
         items.append({"group": "lead", "kind": "lead", "id": f"fub-lead-{pid}", "pid": pid,
                       "who": display_name(p.get("firstName"), p.get("lastName")),
                       "title": f"New lead · {display_name(p.get('firstName'), p.get('lastName'))} · {p.get('source') or 'unknown source'}",
-                      "when": fmt_time(created), "rank": 5, "link": fub_person_url(pid, domain),
+                      "when": fmt_time(created), "createdAt":iso_z(created), "rank": 5, "link": fub_person_url(pid, domain),
                       "_k": ("~", iso_z(created))})
-    items.sort(key=lambda i: (i.get("rank", 9), i.get("_k") or ("", "")))
+    for item in items:
+        since = parse_iso(item.get("createdAt")) or now
+        item["createdAt"] = iso_z(since)
+        item["ageSeconds"] = max(0,int((now-since).total_seconds()))
+        item["fubLink"] = item.get("link") if ".followupboss.com/" in str(item.get("link")) else f"https://{domain}.followupboss.com/2/tasks"
+    items.sort(key=lambda i: (i["createdAt"],str(i.get("id") or "")))
     for i in items:
         i.pop("_k", None)
         i.pop("rank", None)
@@ -1854,6 +1872,7 @@ def build_hotsheet(doc, viewers: dict, our_streets: set, now: datetime, mtime: f
            "fileAsOf": iso_z(datetime.fromtimestamp(mtime,timezone.utc)) if mtime else None,
            "ageSeconds": max(0, (now - as_of_dt).total_seconds()) if as_of_dt else None,
            "staleAfter": hotsheet_due(as_of_dt).timestamp() * 1000 if as_of_dt else None,
+           "nextRun": iso_z(hotsheet_due(as_of_dt)-timedelta(minutes=30)) if as_of_dt else None,
            "type": "hotsheet", "rows": rows, "replace": True, "source": "NJMLS hot sheet", "status": "live"}
     if stamp:
         msg["asOf"] = stamp
@@ -2006,6 +2025,7 @@ def public_payload(value):
     if isinstance(value, list):
         return [public_payload(v) for v in value]
     if isinstance(value, str):
+        value = merge_text(value)
         for name in HOLD_NAMES:
             value = re.sub(r"(?<!\w)" + re.escape(name) + r"(?!\w)","[access-held contact]",value,flags=re.IGNORECASE)
         if ACCESS_HOLD_IDS:
@@ -2030,6 +2050,9 @@ class Hub:
         self.lock = threading.Lock()
         self.clients: set = set()
         self.runtime = {}
+        self.display_watch = {}
+        self.display_disconnected_at = None
+        self.had_visible_display = False
         self.started_monotonic = time.monotonic()
         self.transitions = deque(maxlen=120)
         self.effective_states = {}
@@ -2051,8 +2074,44 @@ class Hub:
         panels = msg.get("panels") or {}
         row["panels"] = {k:{"status":v.get("status"),"ageSeconds":v.get("ageSeconds")} for k,v in panels.items() if k in {"today","pipeline","buyers","feed","needs","highlights"} and isinstance(v,dict) and v.get("status") in {"live","stale","error","awaiting"} and isinstance(v.get("ageSeconds"),(int,float)) and math.isfinite(v["ageSeconds"])} if isinstance(panels,dict) else {}
         with self.lock:
-            self.runtime[id(client)] = row
-            self.runtime = {k:v for k,v in self.runtime.items() if time.time()-v["at"] < 180}
+            key=id(client);prior=self.display_watch.get(key,{})
+            low=row["visible"] and row.get("renderFps",30)<15
+            row["lowSince"] = (prior.get("lowSince") or row["at"]) if low else None
+            row["erroring"] = row.get("errors",0)>0
+            self.runtime[key] = row
+            self.display_watch[key] = row
+            if row["visible"]:self.had_visible_display=True
+            self.display_disconnected_at=None
+
+    def display_needs(self, now=None):
+        now=time.time() if now is None else now
+        with self.lock:
+            rows=list(self.display_watch.values());disconnected=self.display_disconnected_at
+        code=None;since=now
+        for row in rows:
+            if not row.get("visible"):continue  # intentionally hidden tabs suspend their renderer
+            if now-row["at"]>=120:code="DISPLAY_SILENT";since=row["at"];break
+            if row.get("erroring"):code="DISPLAY_ERROR";since=row["at"];break
+            if row.get("lowSince") is not None and now-row["lowSince"]>=180:code="DISPLAY_LOW_FPS";since=row["lowSince"];break
+        if code is None and disconnected and now-disconnected>=120:
+            code="DISPLAY_DISCONNECTED";since=disconnected
+        if code is None:return []
+        return [{"id":"sys-display-watchdog","group":"system","kind":"system","agent":"engineer",
+                 "title":"Studio display needs you", "failureCode":code,
+                 "detail":code+" · Reload the Studio office page; close unused Office tabs if rendering remains slow.",
+                 "when":"Now", "createdAt":iso_z(datetime.fromtimestamp(since,timezone.utc)),
+                 "ageSeconds":int(max(0,now-since)), "fubLink":f"https://{CFG['fub_domain']}.followupboss.com/2/tasks"}]
+
+    def refresh_display_needs(self):
+        alerts=self.display_needs()
+        with self.lock:message=dict(self.snapshot.get("panel:needs") or {})
+        data=dict(message.get("data") or {})
+        items=[i for i in data.get("items",[]) if i.get("id")!="sys-display-watchdog"]+alerts
+        items.sort(key=lambda i:i.get("createdAt") or "")
+        data.update(items=items,total=len(items),counts={g:sum(i.get("group")==g for i in items) for g in ("system","overdue","approval","today","appointment","lead")})
+        if not message:message=_panel("needs",data,status="awaiting")
+        else:message["data"]=data
+        self.update("panel:needs",message)
 
     def runtime_view(self):
         with self.lock:return [dict(v) for v in self.runtime.values() if time.time()-v["at"] < 90]
@@ -2165,7 +2224,10 @@ class Hub:
             COMMANDS.prepared = {k:v for k,v in COMMANDS.prepared.items() if v["client"] is not c}
         with self.lock:
             self.clients.discard(c)
+            previous=self.display_watch.pop(id(c),None)
             self.runtime.pop(id(c), None)
+            if not self.clients and self.had_visible_display:
+                self.display_disconnected_at=time.time()
         c.close()
 
     def count(self) -> int:
@@ -2748,7 +2810,7 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps({"ok": True, "readiness": HUB.readiness(), "version": VERSION, "clients": HUB.count(), "feeds": HUB.feed_view(),
                                "readOnly": False, "sourceReadOnly": True, "commandsAvailable": COMMANDS.enabled(), "commandMode":"existing_chat_queue", "coordinatorId":COORDINATOR_ID, "pageVersion": PAGE_VERSION, "buildId": page_build_id(),
                                "fubUsage": FUB_CLIENT.usage() if FUB_CLIENT else {},
-                               "pageRuntime": HUB.runtime_view(),
+                               "pageRuntime": HUB.runtime_view(), "displayNeeds":HUB.display_needs(),
                                "serverTime": iso_z(datetime.now(timezone.utc))}).encode()
             return self._send(200, body, "application/json")
         if path.startswith("/vendor/"):
@@ -3043,6 +3105,21 @@ def read_results(folder: Path) -> dict:
     return out
 
 
+def job_failure(j):
+    text = str(j.get("summary") or "").lower()
+    if "property_evidence_stale" in text:
+        return "PROPERTY_EVIDENCE_STALE", "Wait for the NJMLS owner's next ordinary preparation to publish fresh eligibility evidence."
+    if "session" in text or "sign-in" in text:
+        return "SOURCE_SIGN_IN", "Double-click NJMLS LOGIN on the Studio desktop."
+    if "future timestamp" in text:
+        return "RECEIPT_CLOCK", "Review the producer's receipt timestamp in its owning workflow."
+    if "schedule could not" in text:
+        return "SCHEDULE_UNREADABLE", "Review the job's installed schedule in its owning workflow."
+    if "access-held" in text or "privacy" in text or "withheld" in text:
+        return "PRIVATE_RECEIPT_REVIEW", "Open the job's private receipt in its owning workflow."
+    return "JOB_RESULT_FAILED", "Open the job's latest receipt in its owning workflow."
+
+
 def build_fleet(listing: dict, schedules: dict, results: dict, today: dict, started: dict, now: datetime,
                 seen: dict = None) -> dict:
     """Every job, its agent, and what it is doing; then each agent's status for the office.
@@ -3109,6 +3186,10 @@ def build_fleet(listing: dict, schedules: dict, results: dict, today: dict, star
                      "lastExit": None, "ok": res.get("ok"), "summary": str(res.get("summary") or "")[:200],
                      "lastAt": iso_z(res_at), "lastFrom": "record", "schedule": "with the monitor", "next": None,
                      "runsToday": counts["ok"] + counts["fail"], "failsToday": counts["fail"]})
+    for j in jobs:
+        if j.get("ok") is False:
+            j["failureCode"],j["recoveryStep"] = job_failure(j)
+            if not j.get("summary"):j["summary"] = j["failureCode"] + " · " + j["recoveryStep"]
     agents: dict = {}
     for j in jobs:
         agents.setdefault(j["agent"], []).append(j)
@@ -3300,6 +3381,39 @@ class FubPoller:
         self.activity_cache = None
         self.probe_since = None
         self.history_scan = None
+        self.people_cache = None
+        self.people_sweep_at = 0.0
+        self.people_since = None
+        self.pipeline_cache = None
+        self.pipeline_at = 0.0
+        self.approval_cache = {}
+
+    def _people(self, checked_at):
+        full = self.people_cache is None or time.monotonic() - self.people_sweep_at >= 1800
+        query = {"limit":100,"sort":"id","includeTrash":"true",
+                 "fields":"id,created,updated,firstName,lastName,stage,source,tags,assignedUserId,customRealScoutScoutScore"}
+        if not full and self.people_since:
+            query["updatedAfter"] = iso_z(self.people_since - timedelta(seconds=5))
+        rows = self.fub.pages("/people", query, "people", 20)
+        roster = {} if full else dict(self.people_cache or {})
+        for row in rows:
+            pid = row.get("id")
+            if not isinstance(pid,int): raise FubError("invalid people census")
+            if row.get("isDeleted") or row.get("deleted") or row.get("gone"):
+                roster.pop(pid,None)
+            else: roster[pid] = row
+        # A completed full replacement removes hard-deleted contacts absent from deltas.
+        self.people_cache = roster
+        if full:self.people_sweep_at = time.monotonic()
+        return list(roster.values())
+
+    def _pipelines(self):
+        if self.pipeline_cache is None or time.monotonic() - self.pipeline_at >= 1800:
+            rows = self.fub.get("/pipelines").get("pipelines")
+            if not isinstance(rows,list):raise FubError("invalid pipelines")
+            self.pipeline_cache = rows
+            self.pipeline_at = time.monotonic()
+        return self.pipeline_cache
 
     def probe(self):
         checked_at = datetime.now(timezone.utc)
@@ -3309,23 +3423,19 @@ class FubPoller:
         tasks = f.pages("/tasks", {"isCompleted": "false", "assignedUserId": CFG["fub_user_id"], "sort": "-id", "limit": 100}, "tasks", 10)
         appts = f.pages("/appointments", {"limit": 100}, "appointments", 10)
         deals = f.pages("/deals", {"limit": 100, "includeArchived": 1}, "deals", 10)
-        persons = f.pages("/people", {"limit": 100, "sort": "id", "includeTrash": "true",
-                         "fields": "id,created,firstName,lastName,stage,source,tags,assignedUserId,customRealScoutScoutScore"}, "people", 20)
+        persons = self._people(checked_at)
         for p in persons:
             if p.get("id") in ACCESS_HOLD_IDS:
                 full = " ".join(str(p.get(k) or "") for k in ("firstName","lastName")).strip()
                 if len(full)>3:HOLD_NAMES.update((full,_held_initial_name(p.get("firstName"),p.get("lastName"))))
         persons = [p for p in persons if p.get("id") not in ACCESS_HOLD_IDS]
-        pipelines = f.get("/pipelines").get("pipelines")
-        if not isinstance(pipelines, list):
-            raise FubError("invalid pipelines")
+        pipelines = self._pipelines()
         head = f.get("/events", {"limit": 1})
         if not isinstance(head.get("events"), list):
             raise FubError("invalid events")
         delta = f.pages("/emEvents", {"limit": 100, "updatedAfter": iso_z((self.probe_since or datetime.now(timezone.utc) - timedelta(days=7)) - timedelta(seconds=5))}, "emEvents", 20)
         since = datetime.now(timezone.utc) - timedelta(days=7)
         text_heads = [self._texts(direction,since,10) for direction in ("out","in")]
-        self.notes = {}  # edits and deleted drafts must invalidate the previous cache
         self._notes_for([t for t in tasks if is_approval_task(t) and date_part(t.get("dueDate")) and date_part(t["dueDate"]) <= datetime.now(ET).date() and not _skip_person(t.get("personId"), next((p for p in persons if p.get("id") == t.get("personId")), {"gone":True}), ACCESS_HOLD_IDS)])
         sample = {"tasks": tasks, "appts": appts, "deals": deals, "people": persons, "pipelines": pipelines,
                   "email_delta": delta, "event_head": {"items":head.get("events"),"total":(head.get("_metadata") or {}).get("total")}, "text_heads": text_heads, "notes": self.notes}
@@ -3424,29 +3534,32 @@ class FubPoller:
         return False
 
     def _notes_for(self, tasks: list) -> None:
-        wanted = {}
-        for t in tasks:
-            m = PREP_RE.search(str(t.get("name") or ""))
-            if m and int(m.group(2)) not in self.notes and t.get("personId") not in ACCESS_HOLD_IDS:
-                nid, pid = int(m.group(2)), t.get("personId")
-                if nid in wanted and wanted[nid] != pid:
-                    raise FubError("approval draft belongs to conflicting contacts")
-                wanted[nid] = pid
-        if len(wanted) > 12:
-            raise FubError("approval draft check exceeds minute budget; source held")
-        for nid, pid in wanted.items():
+        wanted, keys = {}, {}
+        for task in tasks:
+            m = PREP_RE.search(str(task.get("name") or ""))
+            if not m or task.get("personId") in ACCESS_HOLD_IDS:continue
+            nid,pid = int(m.group(2)),task.get("personId")
+            if nid in wanted and wanted[nid] != pid:
+                raise FubError("approval draft belongs to conflicting contacts")
+            wanted[nid] = pid
+            # Task identity + source updated time; old payloads lacking updated still invalidate on content changes.
+            revision = task.get("updated") or task.get("updatedAt") or command_digest(task)
+            key = (task.get("id"),str(revision),nid,pid)
+            keys[key] = nid
+        missing = {nid: wanted[nid] for key,nid in keys.items() if key not in self.approval_cache}
+        if len(missing)>12:raise FubError("approval draft check exceeds minute budget; source held")
+        fetched = {}
+        for nid,pid in missing.items():
             try:
-                n = self.fub.get(f"/notes/{nid}")
-                if n.get("personId") != pid or n.get("personId") in ACCESS_HOLD_IDS:
+                note = self.fub.get(f"/notes/{nid}")
+                if note.get("personId") != pid or note.get("personId") in ACCESS_HOLD_IDS:
                     raise FubError("approval draft contact mismatch; source held")
-                self.notes[nid] = {"body": n.get("body") or "", "subject": n.get("subject") or ""}
-            except FubRateLimited:
-                raise
-            except FubError as exc:
-                raise FubError("approval draft unavailable (" + str(exc) + ")") from None
-        if len(self.notes) > 400:
-            for k in list(self.notes)[:200]:
-                self.notes.pop(k, None)
+                fetched[nid] = {"body":note.get("body") or "", "subject":note.get("subject") or ""}
+            except FubRateLimited:raise
+            except FubError as exc:raise FubError("approval draft unavailable ("+str(exc)+")") from None
+        # Commit atomically after every requested draft is verified; removed tasks lose their cached drafts.
+        self.approval_cache = {key:fetched[nid] if nid in fetched else self.approval_cache[key] for key,nid in keys.items()}
+        self.notes = {nid:self.approval_cache[key] for key,nid in keys.items()}
 
     def cycle(self, sample=None, refresh=True) -> None:
         now = datetime.now(timezone.utc)
@@ -3523,6 +3636,7 @@ class FubPoller:
         self.last_ok = sample["_checked_at"]
         self.signature = sample["_signature"]
         self.probe_since = sample["_checked_at"]
+        self.people_since = sample["_checked_at"]
         for key, data in self.last_panels.items():
             history_old = key == "highlights" and time.time() - self.history["at"] > self.HISTORY_EVERY + 120
             self.hub.update(f"panel:{key}", _panel(key, data, as_of=self.last_ok, status="stale" if history_old else "live",
@@ -3689,7 +3803,7 @@ def system_needs(hotsheet: dict, fleet: dict, fub_note: str = None) -> list:
         if j.get("ok") is False:
             at = parse_iso(j.get("lastAt"))
             out.append({"id": f"sys-job-{j['label']}", "agent": j.get("agent"),
-                        "title": f"{j['name']} reported a problem", "detail": j.get("summary") or "",
+                        "title": f"{j['name']} reported a problem", "detail": " · ".join(v for v in (j.get("failureCode"),j.get("summary"),j.get("recoveryStep")) if v), "at":j.get("lastAt"),
                         "when": fmt_time(at) if at else "", "link": "https://command.beyderco.com"})
     return out
 
@@ -3697,6 +3811,7 @@ def system_needs(hotsheet: dict, fleet: dict, fub_note: str = None) -> list:
 def keepalive(stop: threading.Event) -> None:
     while not stop.wait(30):
         HUB.ping_all()
+        HUB.refresh_display_needs()
         HUB.broadcast(COMMANDS.view())
         HUB.broadcast({"type": "heartbeat", "version": VERSION, "pageVersion": PAGE_VERSION, "buildId": page_build_id(),
                        "serverTime": iso_z(datetime.now(timezone.utc))})

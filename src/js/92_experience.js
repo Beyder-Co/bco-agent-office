@@ -12,13 +12,14 @@ window.OfficeExperience = (() => {
   validate(saved);
   const media=window.matchMedia('(prefers-reduced-motion: reduce)');
   function apply(){REDUCED_MOTION=preferences.motion==='reduce'||preferences.motion==='system'&&media.matches;document.body.classList.toggle('office-compact',preferences.density==='compact');document.body.classList.toggle('office-reduced',REDUCED_MOTION);document.body.classList.toggle('office-full-motion',preferences.motion==='full');}
+  function night(now=Date.now()){const h=Number(new Date(now).toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'2-digit',hour12:false}));return h>=23||h<6;}
   function save(){try{localStorage.setItem(KEY,JSON.stringify(preferences));durable=true;}catch(_){durable=false;}apply();}
   media.addEventListener?.('change',apply);
   const time=v=>v?new Date(v).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true})+' ET':'Awaiting data';
   function options(values,current){return values.map(([v,t])=>`<option value="${v}" ${v===current?'selected':''}>${t}</option>`).join('');}
   function renderSettings(){
     dialog.querySelector('#experience-settings').innerHTML=`<h3>Make the office yours</h3><div class="experience-grid">
-    <label>Rendering<select data-pref="performance">${options([['balanced','Balanced · adaptive, 30 fps'],['quiet','Quiet · sharp, 15 fps'],['sharp','Sharp · full resolution, 30 fps']],preferences.performance)}</select></label>
+    <label>Rendering<select data-pref="performance">${options([['balanced','Balanced · adaptive, 30 fps'],['quiet','Quiet · sharp, 18 fps'],['sharp','Sharp · full resolution, 30 fps']],preferences.performance)}</select></label>
     <label>Motion<select data-pref="motion">${options([['system','Follow system setting'],['reduce','Reduce motion'],['full','Full motion']],preferences.motion)}</select></label>
     <label>Reading density<select data-pref="density">${options([['comfortable','Comfortable'],['compact','Compact']],preferences.density)}</select></label>
     <label>Opening view<select data-pref="homeView">${options(views.map(v=>[v,v==='hudson'?'The Hudson':v==='boardroom'?'Market Room':v]),preferences.homeView)}</select></label></div>
@@ -64,5 +65,5 @@ window.OfficeExperience = (() => {
     document.addEventListener('keydown',e=>{if(!dialog.open)return;e.stopImmediatePropagation();if(e.key==='Escape'){e.preventDefault();close();}},true);
     UI.updateInsets();
   }
-  return {preferences,init,open,close,refresh,healthHTML, fps:()=>preferences.performance==='quiet'?15:30,rememberView:name=>{if(preferences.rememberView&&views.includes(name)){preferences.homeView=name;save();}}};
+  return {preferences,init,open,close,refresh,healthHTML, night, motionScale:()=>night()?.45:1, fps:()=>preferences.performance==='quiet'||night()?18:30,rememberView:name=>{if(preferences.rememberView&&views.includes(name)){preferences.homeView=name;save();}}};
 })();

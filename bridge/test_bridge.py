@@ -714,15 +714,17 @@ class Feed(unittest.TestCase):
         system = [{"id": "sys-njmls", "title": "Sign in to NJMLS", "when": "Hot sheet paused"}]
         n = B.build_needs(tasks, appts, recent, self.people, notes, NOW, system)
         groups = [i["group"] for i in n["items"]]
-        self.assertEqual(groups, ["system", "overdue", "approval", "today", "appointment", "lead"])
-        appr = n["items"][2]
+        self.assertEqual(groups, ["overdue", "approval", "lead", "system", "today", "appointment"])
+        by_id = {i["id"]:i for i in n["items"]}
+        self.assertTrue(all("ageSeconds" in i and i["fubLink"].startswith("https://example.followupboss.com/") for i in n["items"]))
+        appr = by_id["fub-task-2"]
         self.assertEqual(appr["title"], "✋ SEND TEXT: personal follow-up with Sam Ortiz · Message Prep")
         self.assertEqual(appr["draft"], "Hi Sam,\n\nFollowing up on 5 Oak Ln & the open house.")
         self.assertEqual(appr["agent"], "crimson")
-        self.assertEqual(n["items"][3]["title"], "Call Riley Brooks about Alpine")
-        self.assertEqual(n["items"][1]["when"], "Overdue · 2d")
-        self.assertEqual(n["items"][4]["title"], "Showing with Riley Brooks")
-        self.assertTrue(all(i.get("link", "").startswith("https://example.followupboss.com/2/people/view/") for i in n["items"][1:]))
+        self.assertEqual(by_id["fub-task-1"]["title"], "Call Riley Brooks about Alpine")
+        self.assertEqual(by_id["fub-task-3"]["when"], "Overdue · 2d")
+        self.assertEqual(by_id["fub-appt-7"]["title"], "Showing with Riley Brooks")
+        self.assertTrue(all(i.get("link", "").startswith("https://example.followupboss.com/2/people/view/") for i in n["items"] if i["group"] != "system"))
         self.assertNotIn("Held", " ".join(i["title"] for i in n["items"]))
         gates = B.approval_gates(n)
         self.assertEqual(len(gates), 1)
@@ -1161,7 +1163,7 @@ class FreshnessV84(unittest.TestCase):
         self.assertEqual(h.feeds['realscout']['state'],'stale')
 
     def test_server_heartbeat_reports_release(self):
-        meta=B.Hub().meta();self.assertEqual(meta['pageVersion'],'8.8.0');self.assertIn('serverTime',meta)
+        meta=B.Hub().meta();self.assertEqual(meta['pageVersion'],'8.8.1');self.assertIn('serverTime',meta)
 
 
 class ReleaseV84(unittest.TestCase):

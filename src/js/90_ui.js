@@ -1203,7 +1203,7 @@ const UI = {
     const H = OFFICE_STATE.hotsheet;
     const p = key === 'today' ? P.needs : key === 'pipeline' ? P.pipeline : key.startsWith('hot') ? H : P.feed;
     const title = {today:'Needs you, follow-ups & leads',pipeline:'Pipeline & critical dates',hotnew:'NJMLS · new, returning & open',hotdone:'NJMLS · price, under contract & sold',main:'Activity & contact highlights'}[key];
-    const row = i => `<li><div class="a">${esc(i.title || i.text || '')}</div>${i.who ? `<div class="b">${esc(i.who)}</div>` : ''}${i.when ? `<div class="b">${esc(i.when)}</div>` : ''}${i.draft ? `<p class="data-draft">${esc(i.draft)}</p>` : ''}${i.link ? `<a href="${esc(i.link)}" target="_blank" rel="noopener noreferrer">Open in Follow Up Boss ↗</a>` : ''}</li>`;
+    const row = i => `<li><div class="a">${esc(i.title || i.text || '')}</div>${i.who ? `<div class="b">${esc(i.who)}</div>` : ''}${i.when ? `<div class="b">${esc(i.when)}${i.createdAt?' · '+Math.floor(Math.max(0,Date.now()-new Date(i.createdAt))/60000)+' min old':''}</div>` : ''}${i.detail?`<p>${esc(i.detail)}</p>`:''}${i.draft ? `<details><summary>Read complete prepared draft</summary><pre class="data-draft">${esc(i.draft)}</pre></details>` : ''}${i.fubLink||i.link ? `<a href="${esc(i.fubLink||i.link)}" target="_blank" rel="noopener noreferrer">Open in Follow Up Boss ↗</a>` : ''}</li>`;
     const section = (label,items) => `<section><h3>${esc(label)}</h3><ol class="m-list">${items.length ? items.map(row).join('') : '<li>No records in this source window.</li>'}</ol></section>`;
     let content = '';
     if (key === 'today') {

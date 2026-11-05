@@ -38,3 +38,9 @@ Retain privacy exclusions and dated source/freshness labels. Rendering can slow 
 ## Release identities
 
 The Studio had already reached page 8.8.0 / bridge 1.6.0 before this publication request. Public tags `v8.6` and `v8.7` identify the clean-source publication baseline and requested follow-up milestone; they do not import the older private Git history or downgrade the later room/coordinator work. The page and bridge expose their actual installed versions in local health diagnostics.
+
+## Follow-up milestone
+
+Approval drafts are cached by task identity and source revision. People use updated-record queries with a complete replacement every 30 minutes so removals disappear; pipeline definitions share that cadence. All requests retain the existing pacing and shared-budget guards. Unknown merge tokens are removed.
+
+Needs are oldest first, with age, complete drafts and a Follow Up Boss link. Failed receipts include a non-identifying diagnostic and recovery step. The freshness bar shows the hot-sheet producer’s next scheduled run and each rate source’s date. From 11 PM to 6 AM Eastern, animation slows to 18 fps while data checks continue. The field screen retains its static-layer cache and 6 fps cap. A bridge-side watchdog raises a Needs item for a silent display after two minutes or sustained sub-15 fps after three minutes; deliberately hidden tabs are excluded.

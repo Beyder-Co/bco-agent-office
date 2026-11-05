@@ -331,7 +331,7 @@ const FEED_STATES = ['awaiting', 'live', 'stale', 'error'];
 const feedState = s => (FEED_STATES.includes(s) ? s : 'live');
 
 /** Replace (or extend) the hot sheet with rows from the live MLS feed. */
-function setHotSheet({ rows = [], asOf, source, replace = true, status, note, staleAfter, fileAgeSeconds, fileAsOf } = {}) {
+function setHotSheet({ rows = [], asOf, source, replace = true, status, note, staleAfter, fileAgeSeconds, fileAsOf, nextRun } = {}) {
   const H = OFFICE_STATE.hotsheet;
   const clean = rows.map(normHotRow).filter(r => r.address && HOT_KINDS[r.kind]);
   H.rows = (replace ? clean : clean.concat(H.rows.filter(x => !clean.some(c => c.id === x.id)))).sort((a, b) => b.at - a.at);
@@ -340,6 +340,7 @@ function setHotSheet({ rows = [], asOf, source, replace = true, status, note, st
   H.status = feedState(status);
   H.note = note ? String(note) : null;
   H.staleAfter = staleAfter || null;
+  H.nextRun = nextRun || null;
   H.fileAgeSeconds = fileAgeSeconds;
   H.fileAsOf = fileAsOf ? new Date(fileAsOf).getTime() : null;
   BUS.emit('hotsheet', { rows: clean });

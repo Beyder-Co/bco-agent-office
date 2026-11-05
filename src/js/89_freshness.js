@@ -8,6 +8,7 @@ function sourceAgeText() {
 }
 function sourceAgeSummary() { return sourceAgeText().replace(/ checked /g, ' '); }
 function refreshFreshness(now = Date.now()) {
+  const time=v=>Number.isFinite(officeSourceTime(v))?new Date(v).toLocaleString('en-US',{timeZone:'America/New_York',weekday:'short',hour:'numeric',minute:'2-digit',hour12:true})+' ET':'unavailable';
   const s = OFFICE_STATE, connected = s.meta.feed === 'live';
   let el = document.getElementById('freshness');
   if (!el) { el = document.createElement('div'); el.id = 'freshness'; el.setAttribute('role','button'); el.tabIndex=0; el.setAttribute('aria-haspopup','dialog'); el.onclick=()=>window.OfficeExperience?.open(); el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();window.OfficeExperience?.open();}}; document.body.appendChild(el); }
@@ -41,8 +42,8 @@ function refreshFreshness(now = Date.now()) {
   const fileAt=officeSourceTime(s.hotsheet.fileAsOf),pullAt=officeSourceTime(s.hotsheet.asOf);
   const fileAge = Number.isFinite(fileAt)&&fileAt<=now+5000 ? Math.max(0,Math.floor((now-fileAt)/60000))+' min' : 'unknown';
   const age = Number.isFinite(pullAt)&&pullAt<=now+5000 ? Math.max(0,Math.floor((now-pullAt)/60000))+' min old' : 'awaiting valid data';
-  el.textContent = `${stale ? 'STALE / ATTENTION · ' : ''}${sourceAgeSummary()} · NJMLS ${age} · Rates dated`;
-  el.title = `${sourceAgeText()} · NJMLS pull ${age}, file ${fileAge} · Rates individually dated · v8.8.0 · Click for sources`;
+  el.textContent = `${stale ? 'STALE / ATTENTION · ' : ''}${sourceAgeSummary()} · NJMLS ${age} · next ${time(s.hotsheet.nextRun)} · Rates: ${[...new Set(s.ticker.items.filter(i=>i.asOf).map(i=>(i.source||i.label||"Rate")+" "+i.asOf))].join(" / ")}`;
+  el.title = `${sourceAgeText()} · NJMLS pull ${age}, file ${fileAge} · Rates individually dated · v8.8.1 · Click for sources`;
   el.className = stale ? 'stale' : '';
   document.documentElement.style.setProperty('--fresh-h', Math.ceil(el.getBoundingClientRect().height) + 'px');
 }

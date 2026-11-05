@@ -24,6 +24,21 @@ class PublicationBoundary(unittest.TestCase):
         """
         subprocess.run(['node','-e',script],check=True,capture_output=True)
 
+    def test_public_bridge_entry_never_attempts_transport(self):
+        source=(ROOT/'src/js/88_bridge.js').read_text()
+        resolve=source[source.index('function resolveBridgeUrl('):source.index("/** The bridge's own report:")]
+        connect=source[source.index('function connectBridge('):source.index('/* Away from the Studio')]
+        script="const vm=require('node:vm'),assert=require('node:assert/strict');const source="+json.dumps(resolve+connect)+";"+r"""
+        for(const origin of ['https://office.beyderco.com','http://127.0.0.1:4317']) {
+          let attempts=0;
+          const c={window:{BCO_PUBLIC_DEMO:true},location:{origin},OFFICE_RUNTIME:{},WebSocket:class {constructor(){attempts++;}},URLSearchParams};
+          vm.createContext(c);vm.runInContext(source,c);
+          vm.runInContext("connectBridge('ws://127.0.0.1:4317/ws')",c);
+          assert.equal(attempts,0);assert.equal(c.OFFICE_RUNTIME.transportStarted,undefined);
+        }
+        """
+        subprocess.run(['node','-e',script],check=True,capture_output=True)
+
     def test_http_host_and_origin_guard_all_paths(self):
         server=B.Server(('127.0.0.1',0),B.Handler);port=server.server_address[1]
         t=threading.Thread(target=server.serve_forever,daemon=True);t.start()

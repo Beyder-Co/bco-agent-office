@@ -65,7 +65,7 @@ async function boot() {
   // is better sharp at 30 fps than smooth and blurred)
   const DPR_MAX = Math.min(window.devicePixelRatio || 1, 2);
   const DPR_MIN = Math.min(DPR_MAX, 1.5);
-  let dpr = DPR_MAX, acc = 0, n = 0;
+  let dpr = DPR_MAX, acc = 0, n = 0, motionTime = 0;
   function frame(now) {
     const budget=1000/OfficeExperience.fps();
     if (document.hidden || now - (window.__lastOfficeFrame || 0) < budget) { requestAnimationFrame(frame); return; }
@@ -77,8 +77,9 @@ async function boot() {
     const profile=OfficeExperience.preferences.performance;
     const ceiling=profile==='quiet' ? DPR_MIN : DPR_MAX;
     if(dpr>ceiling || profile==='sharp' && dpr!==DPR_MAX) { dpr=ceiling; renderer.setPixelRatio(dpr); resize(); }
-    const t = REDUCED_MOTION ? 0 : now / 1000;
-    const motionDt=REDUCED_MOTION ? 0 : dt;
+    const motionDt=REDUCED_MOTION ? 0 : dt * OfficeExperience.motionScale();
+    motionTime += motionDt;
+    const t = REDUCED_MOTION ? 0 : motionTime;
     if(!REDUCED_MOTION) { simTick(); ambTick(); }
     MOVE.update(motionDt);
     updateIncidents(motionDt);
@@ -105,6 +106,9 @@ async function boot() {
   window.__office = { WORLD, controls, camera, THREE, ROOM, ROOM_OBJ, UI, VIEW, SIM, MOVE, AMB, OFFICE_STATE, SKY, NAV, DESTINATIONS, COLLIDERS, scene, renderer, Figure, figureSpec, DESK, HIGH5, blockedAt, INCIDENT, SEATED_MODES, FIELD: typeof FIELD !== "undefined" ? FIELD : null };
 }
 boot().catch(err => {
+  OFFICE_RUNTIME.errors++;
+  const failedBridge=resolveBridgeUrl();
+  if(failedBridge) connectBridge(failedBridge);
   console.error(err);
   document.body.insertAdjacentHTML('beforeend', `<p style="position:fixed;left:16px;bottom:16px;font:500 13px var(--ui);color:#0a0a0a">The office could not start: ${String(err && err.message ? err.message : err).replace(/</g, '&lt;')}</p>`);
 });
