@@ -1826,7 +1826,7 @@ def map_hot_row(r: dict, viewers: dict, our_streets: set) -> dict | None:
     return {k: v for k, v in row.items() if v is not None}
 
 
-def hotsheet_due(as_of):
+def hotsheet_next_run(as_of, credit_early=False):
     # Installed Codex producer: read its supported RRULE; no schedule is changed here.
     path = HOME / ".codex/automations/studio-bco-njmls-hotsheet/automation.toml"
     try:
@@ -1843,8 +1843,12 @@ def hotsheet_due(as_of):
     # Codex can dispatch an ordinary occurrence a few minutes before its nominal
     # time. Credit only that narrow window; otherwise a 07:02 pull for 07:05
     # falsely expires at 07:35 on the same day. Older pulls must still expire.
-    future = [t for t in candidates if t > local + timedelta(minutes=5)]
-    return min(future) + timedelta(minutes=30)
+    future = [t for t in candidates if t > local + timedelta(minutes=5 if credit_early else 0)]
+    return min(future)
+
+
+def hotsheet_due(as_of):
+    return hotsheet_next_run(as_of, credit_early=True) + timedelta(minutes=30)
 
 
 def hotsheet_overdue(as_of, now):
@@ -1872,7 +1876,7 @@ def build_hotsheet(doc, viewers: dict, our_streets: set, now: datetime, mtime: f
            "fileAsOf": iso_z(datetime.fromtimestamp(mtime,timezone.utc)) if mtime else None,
            "ageSeconds": max(0, (now - as_of_dt).total_seconds()) if as_of_dt else None,
            "staleAfter": hotsheet_due(as_of_dt).timestamp() * 1000 if as_of_dt else None,
-           "nextRun": iso_z(hotsheet_due(as_of_dt)-timedelta(minutes=30)) if as_of_dt else None,
+           "nextRun": iso_z(hotsheet_next_run(now)),
            "type": "hotsheet", "rows": rows, "replace": True, "source": "NJMLS hot sheet", "status": "live"}
     if stamp:
         msg["asOf"] = stamp

@@ -130,6 +130,13 @@ class Presentation(unittest.TestCase):
         job=fleet['jobs'][0]
         self.assertEqual(job['failureCode'],'PRIVATE_RECEIPT_REVIEW')
         self.assertIn('private receipt',job['recoveryStep'])
+    def test_next_producer_run_is_future_even_when_previous_pull_is_stale(self):
+        with patch.object(Path,'read_text',return_value='rrule="FREQ=DAILY;BYHOUR=7;BYMINUTE=5;BYSECOND=0"'):
+            self.assertEqual(B.hotsheet_next_run(NOW).isoformat(),'2026-11-06T07:05:00-05:00')
+            before=datetime.fromisoformat('2026-11-05T07:03:00-05:00')
+            self.assertEqual(B.hotsheet_next_run(before).isoformat(),'2026-11-05T07:05:00-05:00')
+            self.assertTrue(B.hotsheet_overdue(NOW-timedelta(days=2),NOW))
+
     def test_night_boundaries_in_eastern_time(self):
         source=(ROOT/'src/js/92_experience.js').read_text()
         start=source.index('function night(');end=source.index('\n',start)
