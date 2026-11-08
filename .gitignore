@@ -3,6 +3,7 @@
 !/.gitignore
 !/README.md
 !/UPGRADE_V89.md
+!/UPGRADE_V90.md
 !/build.py
 !/vercel.json
 !/src/
