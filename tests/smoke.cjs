@@ -52,6 +52,8 @@ server.listen(0, '127.0.0.1', async () => {
     check(await page.evaluate(() => location.hash === '#server'), 'the address bar follows the view');
     await page.evaluate(() => window.__office.UI.view('desks'));
     await page.waitForTimeout(2500);
+    // software rendering can still be mid-glide after 2.5 s: read the radius once the camera has arrived
+    await page.waitForFunction(() => !window.__office.controls.glide, null, { timeout: 60000 }).catch(() => {});
     const before = await page.evaluate(() => window.__office.controls.goal.r);
     await page.evaluate(() => window.__office.UI.select('crimson'));
     await page.waitForTimeout(2500);

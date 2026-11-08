@@ -14,10 +14,16 @@
    the tunnel's last stretch, which is always kept. The tunnel opens and closes
    over a third of a second, and its radius is zero the rest of the time, so the
    office looks exactly as before whenever nothing is selected.
+
+   9.2: the same patch fades out anything within a few centimetres of the lens
+   (zoomed in close, a chair or desk between the camera and its subject used to
+   be sliced open by the near plane), and the tunnel is the sight line's own
+   cone, slim at the camera, so zooming in no longer dissolves the desks round
+   the opened agent.
    ============================================================================= */
 
 const XRAY = {
-  u: { uCutA: { value: new THREE.Vector3() }, uCutB: { value: new THREE.Vector3() }, uCutR: { value: 0 } },
+  u: { uCutA: { value: new THREE.Vector3() }, uCutB: { value: new THREE.Vector3() }, uCutR: { value: 0 }, uNearFade: { value: new THREE.Vector2(0.16, 0.42) } },
   patched: new WeakSet(),
   radius: 0,
   _v: new THREE.Vector3(),
@@ -46,15 +52,22 @@ const XRAY = {
           xw = instanceMatrix * xw;
         #endif
         vXW = (modelMatrix * xw).xyz;`);
-      sh.fragmentShader = 'uniform vec3 uCutA;\nuniform vec3 uCutB;\nuniform float uCutR;\nvarying vec3 vXW;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-        if (uCutR > 0.001) {
-          vec3 ab = uCutB - uCutA;
-          float t = clamp(dot(vXW - uCutA, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
-          float d = distance(vXW, uCutA + ab * t);
-          float R = uCutR * mix(2.4, 0.85, clamp(t / 0.8, 0.0, 1.0)); // a cone: wide where it leaves the camera, slim at the agent
-          float keep = max(smoothstep(R * 0.86, R, d), smoothstep(0.76, 0.84, t));
+      sh.fragmentShader = 'uniform vec3 uCutA;\nuniform vec3 uCutB;\nuniform float uCutR;\nuniform vec2 uNearFade;\nvarying vec3 vXW;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+        {
           float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-          if (keep < 0.999 && ign > keep) discard;
+          // right at the lens a surface thins out to nothing over a few centimetres instead of being cut by the near plane
+          float keepN = smoothstep(uNearFade.x, uNearFade.y, distance(vXW, cameraPosition));
+          if (keepN < 0.999 && ign > keepN) discard;
+          if (uCutR > 0.001) {
+            vec3 ab = uCutB - uCutA;
+            float t = clamp(dot(vXW - uCutA, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+            float d = distance(vXW, uCutA + ab * t);
+            // 9.2: the sight line's own cone, slim where it leaves the lens and about the agent's width where it
+            // arrives (it was 2.5 m wide at the camera, so zooming in on an open agent dissolved the desks around it)
+            float R = uCutR * mix(0.32, 0.62, clamp(t / 0.8, 0.0, 1.0));
+            float keep = max(smoothstep(R * 0.8, R, d), smoothstep(0.76, 0.84, t));
+            if (keep < 0.999 && ign > keep) discard;
+          }
         }`);
     };
     m.customProgramCacheKey = () => (prevKey ? prevKey.call(m) : '') + '|xray';

@@ -236,6 +236,14 @@ class CalmControls {
       this.target.z + r * Math.sin(phi) * Math.cos(theta)
     );
     this.cam.lookAt(this.target);
+    // the near plane follows the zoom (9.2): it sat at 0.6 m, so zoomed in close a chair or desk between the lens and
+    // the subject was sliced open and seemed to vanish. Close up it comes in to ~15 cm (anything nearer than that
+    // fades out softly instead, see XRAY.nearFade); far out it stays at 0.6 m for depth precision on the skyline.
+    const near = clamp(r * 0.055, 0.14, 0.6);
+    if (Math.abs(near - this.cam.near) > this.cam.near * 0.01) {
+      this.cam.near = near;
+      this.cam.updateProjectionMatrix();
+    }
     // ease the framing offset so panels slide the room aside, never cover it
     this._viewOffsetCur = damp(this._viewOffsetCur, this.viewOffsetX, 7, dt);
     this._viewOffsetCurY = damp(this._viewOffsetCurY, this.viewOffsetY, 7, dt);
