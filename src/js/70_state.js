@@ -106,13 +106,14 @@ function makeAgent(def) {
     delivered: def.delivered || [],
     look: def.look,
     slot: def.slot,
+    zone: def.zone || null, // 'personal': the study's pair, outside the business crew and its coordinator
     paused: !!def.paused,
     status: 'IDLE',
     activity: null,
     detail: def.paused ? 'Paused by design' : 'Settling in',
     stuck: false,
     taskId: null,
-    location: 'desk', // desk | walking | server | screen | lounge | reading | board | arriving
+    location: 'desk', // desk | walking | server | screen | lounge | board | arriving
     log: [],
     held: [],
   };
@@ -234,8 +235,11 @@ function moveTask(taskOrId, column) {
 }
 
 /** Bring a new agent aboard (cap ten). Returns the agent or an error string. */
+/** The business crew: everyone at the ten desks (the study's personal pair are not counted against them). */
+const deskAgents = () => OFFICE_STATE.order.filter(id => !OFFICE_STATE.agents[id].zone);
+
 function addAgent(spec) {
-  if (OFFICE_STATE.order.length >= CAST_CAP) return 'All ten desks are taken.';
+  if (deskAgents().length >= CAST_CAP) return 'All ten desks are taken.';
   const taken = new Set(OFFICE_STATE.order.map(id => OFFICE_STATE.agents[id].slot));
   const slot = [8, 9, 0, 1, 2, 3, 4, 5, 6, 7].find(s => !taken.has(s));
   if (slot == null) return 'No free desk.';

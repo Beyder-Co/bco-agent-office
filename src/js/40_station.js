@@ -1028,21 +1028,29 @@ class Station {
     this.idHex = spec.color === 'crimson' ? '#2b2b30' : C.main;
     const g = (this.group = new THREE.Group());
     g.name = 'station:' + spec.id;
-    g.rotation.y = STATION_YAW;
+    g.rotation.y = spec.yaw != null ? spec.yaw : STATION_YAW;
 
-    // the rug: white wool, a thin inlaid line round its edge
-    const rug = new THREE.Mesh(new THREE.CylinderGeometry(RUG_R, RUG_R, 0.012, 128), RUG_MAT);
-    rug.position.set(0, 0.006, RUG_Z);
-    rug.receiveShadow = true;
-    g.add(rug);
     // an inlay, not a lit surface: drawn at its exact colour, so the crimson pulse is the brand crimson and never brighter
     this.lineMat = new THREE.MeshBasicMaterial({ color: LINE_NEUTRAL.clone(), toneMapped: false, fog: false });
-    const line = new THREE.Mesh(new THREE.RingGeometry(RUG_R - 0.095, RUG_R - 0.066, 160), this.lineMat); // ~3 cm: reads as a line, not a hairline
-    line.rotation.x = -HALF_PI;
-    line.position.set(0, 0.0125, RUG_Z);
-    line.receiveShadow = true;
-    g.add(line);
     this.line = { col: LINE_NEUTRAL.clone() };
+    if (spec.rug !== false) {
+      // the rug: white wool, a thin inlaid line round its edge
+      const rug = new THREE.Mesh(new THREE.CylinderGeometry(RUG_R, RUG_R, 0.012, 128), RUG_MAT);
+      rug.position.set(0, 0.006, RUG_Z);
+      rug.receiveShadow = true;
+      g.add(rug);
+      const line = new THREE.Mesh(new THREE.RingGeometry(RUG_R - 0.095, RUG_R - 0.066, 160), this.lineMat); // ~3 cm: reads as a line, not a hairline
+      line.rotation.x = -HALF_PI;
+      line.position.set(0, 0.0125, RUG_Z);
+      line.receiveShadow = true;
+      g.add(line);
+    } else {
+      // the study: no rug, so the same signal runs as a line along the front edge of the desk (the room-facing side)
+      const line = new THREE.Mesh(new THREE.BoxGeometry(DESK.w - 0.1, 0.004, 0.028), this.lineMat);
+      line.position.set(0, 0.0125, DESK.nearZ + DESK.d + 0.12);
+      line.receiveShadow = true;
+      g.add(line);
+    }
 
     this._buildDesk(spec);
     this._buildChair();

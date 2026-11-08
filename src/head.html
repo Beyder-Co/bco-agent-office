@@ -156,6 +156,11 @@ body.board-open #roster { max-height: calc(100% - var(--bar-h) - var(--board-h) 
 .chip.wait { color: var(--crimson); font-weight: 600; }
 .chip.wait .d { background: var(--crimson); animation: pip 1.6s ease-in-out infinite; }
 #rosterToggle { margin-left: 4px; }
+.rail-sep { display: flex; align-items: center; gap: 8px; padding: 10px 8px 4px; color: var(--mist); }
+.rail-sep::before, .rail-sep::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+#roster.collapsed .rail-sep { padding: 6px 10px 2px; }
+#roster.collapsed .rail-sep .eyebrow { display: none; }
+.p-runtime { font: italic 400 12px/1.4 var(--ui); color: var(--mist); align-self: center; max-width: 100%; }
 #roster.collapsed { width: 60px; }
 #roster.collapsed .who, #roster.collapsed .rail-head .eyebrow, #roster.collapsed .rail-head .meta, #roster.collapsed .feed { display: none; }
 #roster.collapsed .row { grid-template-columns: 36px; justify-content: center; padding: 6px; }

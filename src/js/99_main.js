@@ -48,7 +48,7 @@ async function boot() {
   // bookmarkable views by hash (the only part of a link an artifact carries): #desks #boardroom #door #board
   const fromHash = initial => {
     const h = location.hash.slice(1);
-    if (['overview', 'hudson', 'desks', 'boardroom', 'door', 'datawall', 'hotsheet', 'hotlist', 'server', 'sculpture'].includes(h)) {
+    if (['overview', 'hudson', 'desks', 'boardroom', 'door', 'datawall', 'hotsheet', 'hotlist', 'server', 'sculpture', 'lounge', 'study'].includes(h)) {
       if (initial) controls.set(viewOf(h)), UI.markView(h);
       else UI.view(h);
     } else if (h === 'board') UI.toggleBoard(true);

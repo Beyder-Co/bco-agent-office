@@ -69,6 +69,25 @@ HOME = Path.home()
 
 # --------------------------------------------------------------------------- config
 
+PERSONAL_PREFIX_DEFAULT = "com.igorbeyder.personal."
+
+
+def validate_personal_runtime(block):
+    """The study's runtime block, or None. Values are shape-checked only; no secret is read or kept."""
+    if not isinstance(block, dict):
+        return None
+    model = block.get("model")
+    prefix = block.get("label_prefix", PERSONAL_PREFIX_DEFAULT)
+    key_file = block.get("key_file")
+    if not isinstance(model, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,79}", model):
+        return None
+    if not isinstance(prefix, str) or not re.fullmatch(r"com\.[a-z0-9-]+\.(personal|pa)\.", prefix):
+        return None
+    if not isinstance(key_file, str) or not key_file.strip() or "\x00" in key_file:
+        return None
+    return {"model": model, "label_prefix": prefix, "key_file": Path(os.path.expanduser(key_file))}
+
+
 def _load_config() -> dict:
     app_dir = Path(os.environ.get("BCO_OFFICE_DIR") or HOME / "Library/Application Support/bco-agent-office")
     cfg = {
@@ -93,6 +112,10 @@ def _load_config() -> dict:
         "night_poll_minutes": 1,
         "open_at_login": True,
         "browser": "Safari",
+        # Igor's personal assistants (the study). Display only until a separate personal runtime is configured here:
+        # {"model": "<model id>", "label_prefix": "com.igorbeyder.personal.", "key_file": "<path the runtime reads>"}
+        # The bridge never reads the key file; it only reports whether the runtime is configured and whether its jobs run.
+        "personal_runtime": None,
     }
     path = Path(os.environ.get("BCO_OFFICE_CONFIG") or app_dir / "config.json")
     try:
@@ -118,6 +141,7 @@ def _load_config() -> dict:
         cfg["env_file"] = Path(os.path.expanduser(user["env_file"]))
     if isinstance(user.get("hotsheet_paths"), list):
         cfg["hotsheet_paths"] = [Path(os.path.expanduser(p)) for p in user["hotsheet_paths"] if isinstance(p, str)]
+    cfg["personal_runtime"] = validate_personal_runtime(user.get("personal_runtime"))
     if os.environ.get("BCO_OFFICE_PORT", "").isdigit():
         cfg["port"] = int(os.environ["BCO_OFFICE_PORT"])
     if os.environ.get("BCO_ENV_FILE"):
@@ -131,6 +155,7 @@ def _load_config() -> dict:
 
 CFG = _load_config()
 APP_DIR: Path = CFG["app_dir"]
+PERSONAL_PREFIX = (CFG["personal_runtime"] or {}).get("label_prefix") or PERSONAL_PREFIX_DEFAULT
 PRIVATE_DIR = APP_DIR / "private"
 LOG_DIR = APP_DIR / "logs"
 OFFICE_HTML = APP_DIR / "office.html"
@@ -2067,6 +2092,8 @@ class Hub:
             "realscout": {"state": "starting", "asOf": None, "note": None},
             "rates": {"state": "starting", "asOf": None, "note": None},
             "fleet": {"state": "starting", "asOf": None, "note": None},
+            # the study's personal runtime: not a business source; never counted in readiness
+            "personal": {"state": "unconfigured", "asOf": None, "note": "No personal runtime configured on this Mac"},
         }
         self.drives_agents = False  # set by the fleet watcher once it can read the jobs
 
@@ -2127,7 +2154,7 @@ class Hub:
             ticker = dict(self.snapshot.get("ticker") or {})
             hot = dict(self.snapshot.get("hotsheet") or {})
         thresholds = {"fub":600 if is_night(now) else 120, "realscout":600 if is_night(now) else 120,
-                      "fleet":45, "rates":1800, "hotsheet":None}
+                      "fleet":45, "rates":1800, "hotsheet":None, "personal":None}
         for key, item in feeds.items():
             seconds = thresholds.get(key)
             at = parse_iso(item.get("asOf"))
@@ -2164,8 +2191,8 @@ class Hub:
 
     def readiness(self, feeds=None):
         feeds = feeds if feeds is not None else self.feed_view()
-        blocking = [name for name,item in feeds.items() if item.get("state") not in ("ok", "quiet", "attention")]
-        attention = [name for name,item in feeds.items() if item.get("state") == "attention"]
+        blocking = [name for name,item in feeds.items() if name != "personal" and item.get("state") not in ("ok", "quiet", "attention")]
+        attention = [name for name,item in feeds.items() if name != "personal" and item.get("state") == "attention"]
         status = "starting" if blocking and all(feeds[name].get("state") == "starting" for name in blocking) else ("degraded" if blocking or attention else "ready")
         return {"status":status,"ready":not blocking and not attention,"dataAvailable":not blocking,"attention":attention,"blockingFeeds":blocking}
 
@@ -2177,7 +2204,8 @@ class Hub:
                 "serverTime":iso_z(datetime.now(timezone.utc)),"uptimeSeconds":round(max(0,time.monotonic()-self.started_monotonic),3),
                 "readiness":self.readiness(feeds),
                 "feeds":{k:{field:v.get(field) for field in ("state","asOf","failures","ageSeconds","thresholdSeconds","reason")} for k,v in feeds.items()},
-                "transitions":transitions,"fubUsage":FUB_CLIENT.usage() if FUB_CLIENT else {}}
+                "transitions":transitions,"fubUsage":FUB_CLIENT.usage() if FUB_CLIENT else {},
+                "personalRuntime":{"configured":CFG["personal_runtime"] is not None,"model":(CFG["personal_runtime"] or {}).get("model"),"labelPrefix":PERSONAL_PREFIX}}
 
     def meta(self) -> dict:
         return {"type": "bridge", "version": VERSION, "drivesAgents": self.drives_agents, "readOnly": False,
@@ -2196,7 +2224,7 @@ class Hub:
     def set_feed(self, name: str, state: str, as_of=None, note=None, failures: int = 0) -> None:
         if name not in self.feeds:
             raise ValueError("unknown feed")
-        state = state if state in {"starting","ok","quiet","attention","stale","error","auth","rate","missing","partial"} else "error"
+        state = state if state in {"starting","ok","quiet","attention","stale","error","auth","rate","missing","partial","unconfigured"} else "error"
         with self.lock:
             self.feeds[name] = {"state": state, "asOf": as_of, "note": note, "failures": failures if isinstance(failures,int) and 0 <= failures <= 1000000000 else 0}
         self.update("bridge", self.meta())
@@ -2900,7 +2928,16 @@ FLEET_PREFIX = "com.beyderco."
 ADDITIONAL_NATIVE = {"com.igorbeyder.matrix-keepalive", "com.igorbeyder.content.plan"}
 
 def office_native_label(label):
-    return isinstance(label,str) and (label.startswith(FLEET_PREFIX) or label in ADDITIONAL_NATIVE)
+    return isinstance(label,str) and (label.startswith(FLEET_PREFIX) or label in ADDITIONAL_NATIVE or label.startswith(PERSONAL_PREFIX))
+
+
+def personal_agent_for(label: str) -> tuple:
+    """A personal-runtime job belongs to Attaché (inbox, calendar, errands) or Bursar (bills, payments, renewals, documents)."""
+    short = label[len(PERSONAL_PREFIX):]
+    low = short.lower()
+    agent = "bursar" if any(k in low for k in ("bursar", "bill", "pay", "renew", "invoice", "statement", "document")) else "attache"
+    nice = short.replace(".", " ").replace("-", " ").replace("_", " ").strip().capitalize() or "Personal job"
+    return agent, nice
 
 JOB_AGENTS = {
     "com.igorbeyder.matrix-keepalive": ("scout", "NJMLS session keepalive"),
@@ -2939,6 +2976,8 @@ def agent_for_job(label: str) -> tuple:
     """(agent id, friendly name) for a launchd label or an outcome record's name."""
     if label in JOB_AGENTS:
         return JOB_AGENTS[label]
+    if label.startswith(PERSONAL_PREFIX):
+        return personal_agent_for(label)
     low = label.lower()
     for mark, agent, name in RESULT_AGENTS:
         if mark in low:
@@ -3274,7 +3313,7 @@ class FleetWatcher:
     def _load_schedules(self) -> None:
         import plistlib
         out, logs = {}, {}
-        for p in sorted(set(self.agents_dir.glob(FLEET_PREFIX + "*.plist")) | {self.agents_dir/(label+".plist") for label in ADDITIONAL_NATIVE if (self.agents_dir/(label+".plist")).is_file()}):
+        for p in sorted(set(self.agents_dir.glob(FLEET_PREFIX + "*.plist")) | set(self.agents_dir.glob(PERSONAL_PREFIX + "*.plist")) | {self.agents_dir/(label+".plist") for label in ADDITIONAL_NATIVE if (self.agents_dir/(label+".plist")).is_file()}):
             try:
                 with open(p, "rb") as fh:
                     pl = plistlib.load(fh)
@@ -3314,6 +3353,7 @@ class FleetWatcher:
             self.today_at = time.time()
         fleet = build_fleet(listing, self.schedules, results, self.today, self.started, now, self._log_times())
         self.fleet = fleet
+        self.report_personal(fleet, now)
         live = bool(listing)
         if live != self.live:
             self.live = live
@@ -3348,6 +3388,21 @@ class FleetWatcher:
             try: COMMANDS.observe_failures(fleet["jobs"])
             except (OSError, ValueError): log.error("Office repair handoff held; durable receipts need review")
         return fleet
+
+    def report_personal(self, fleet: dict, now: datetime) -> None:
+        """The study's feed: configured or not, and whether the runtime's own jobs are loaded and healthy. Aggregate only."""
+        rt = CFG["personal_runtime"]
+        jobs = [j for j in fleet["jobs"] if j["label"].startswith(PERSONAL_PREFIX)]
+        if rt is None:
+            self.hub.set_feed("personal", "unconfigured", None, "No personal runtime configured on this Mac")
+        elif not rt["key_file"].is_file():
+            self.hub.set_feed("personal", "missing", None, "Personal runtime configured; its key file is not present")
+        elif not jobs:
+            self.hub.set_feed("personal", "missing", None, f"Personal runtime configured ({rt['model']}); no {PERSONAL_PREFIX}* jobs are loaded")
+        else:
+            failing = sum(1 for j in jobs if j["ok"] is False)
+            self.hub.set_feed("personal", "attention" if failing else "ok", iso_z(now),
+                              f"{rt['model']} · {len(jobs)} personal jobs · {sum(1 for j in jobs if j['running'])} running · {failing} reporting a failure", failing)
 
     def run(self, stop: threading.Event) -> None:
         while not stop.is_set():

@@ -136,7 +136,7 @@ function conferTick() {
   if (!ROOM_OBJ.boardSeats || typeof sharedTaskOf !== 'function') return;
   for (const id of OFFICE_STATE.order) {
     const a = OFFICE_STATE.agents[id], m = ambOf(id), w = WORLD.byId[id];
-    if (!w || a.paused || MOVE.walkers[id] || m.starting) continue;
+    if (!w || a.paused || a.zone === 'personal' || MOVE.walkers[id] || m.starting) continue;
     if (typeof INCIDENT !== 'undefined' && INCIDENT.owns(id)) continue;
     const task = sharedTaskOf(id);
     if (task) {

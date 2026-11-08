@@ -34,6 +34,7 @@ os.environ["BCO_ENV_FILE"] = os.path.join(TMP, "runtime.env")
 os.environ["BCO_HOTSHEET_PATH"] = os.path.join(TMP, "hotsheet_latest.json")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 Path(TMP, "config.json").write_text(json.dumps({"access_hold_ids":[99000001], "fub_domain":"example", "public_business_number":"201-380-2010"}))
+from unittest.mock import patch  # noqa: E402
 import bridge as B  # noqa: E402
 
 ET = B.ET
@@ -809,6 +810,56 @@ class Fleet(unittest.TestCase):
         self.assertEqual(fl["doneToday"], 21)
         long = B.build_fleet(lst, scheds, {}, {}, {"com.beyderco.realscout.intake": NOW - timedelta(minutes=55)}, NOW)
         self.assertEqual((long["agents"]["scout"]["status"], long["agents"]["scout"]["stuck"]), ("THINKING", True))
+
+    def test_personal_runtime_config_is_shape_checked_only(self):
+        self.assertIsNone(B.validate_personal_runtime(None))
+        self.assertIsNone(B.validate_personal_runtime({"model": "x"}))
+        self.assertIsNone(B.validate_personal_runtime({"model": "Muse Wonder", "key_file": "~/k"}))  # spaces/case: not an id
+        self.assertIsNone(B.validate_personal_runtime({"model": "muse-wonder", "key_file": "~/k", "label_prefix": "com.beyderco."}))  # must not shadow the business fleet
+        ok = B.validate_personal_runtime({"model": "muse-wonder", "key_file": "~/Library/Application Support/bco-personal/.env"})
+        self.assertEqual((ok["model"], ok["label_prefix"]), ("muse-wonder", "com.igorbeyder.personal."))
+        self.assertTrue(ok["key_file"].is_absolute())
+
+    def test_personal_jobs_belong_to_the_study(self):
+        self.assertEqual(B.agent_for_job("com.igorbeyder.personal.inbox-triage"), ("attache", "Inbox triage"))
+        self.assertEqual(B.agent_for_job("com.igorbeyder.personal.bills-weekly"), ("bursar", "Bills weekly"))
+        self.assertTrue(B.office_native_label("com.igorbeyder.personal.calendar"))
+        self.assertNotIn("attache", B.ROLE_CATALOG)  # the study never reaches Crimson's command path
+        with self.assertRaises(ValueError):
+            B.OfficeCommands(B.Hub()).context({"mode": "instruction", "agentId": "attache", "message": "pay the bill"})
+
+    def test_personal_feed_states_are_honest(self):
+        d = Path(tempfile.mkdtemp())
+        hub = B.Hub()
+        listing = "PID\tStatus\tLabel\n-\t0\tcom.beyderco.monitor\n"
+        with patch.dict(B.CFG, personal_runtime=None):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "none.db")
+            with self.assertRaises(OSError): w.tick()  # the fleet counter database guard still applies
+        (d / "db").write_bytes(b"")
+        import sqlite3
+        con = sqlite3.connect(d / "db"); con.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, ts TEXT, job TEXT, kind TEXT, ok INTEGER, summary TEXT, data TEXT)"); con.commit(); con.close()
+        with patch.dict(B.CFG, personal_runtime=None):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "db"); w.tick()
+            self.assertEqual(hub.feeds["personal"]["state"], "unconfigured")
+            self.assertTrue(hub.readiness()["ready"] in (True, False))
+            self.assertNotIn("personal", hub.readiness().get("blocking", []))
+        rt = {"model": "muse-wonder", "label_prefix": "com.igorbeyder.personal.", "key_file": d / "missing.env"}
+        with patch.dict(B.CFG, personal_runtime=rt):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "db"); w.tick()
+            self.assertEqual(hub.feeds["personal"]["state"], "missing")
+            self.assertIn("key file", hub.feeds["personal"]["note"])
+        (d / "missing.env").write_text("TEST=1\n")
+        with patch.dict(B.CFG, personal_runtime=rt):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "db"); w.tick()
+            self.assertEqual(hub.feeds["personal"]["state"], "missing")
+            self.assertIn("no com.igorbeyder.personal.* jobs", hub.feeds["personal"]["note"])
+            running = listing + "515\t0\tcom.igorbeyder.personal.inbox-triage\n"
+            w = B.FleetWatcher(hub, runner=lambda: running, agents_dir=d, results_dir=d, db=d / "db"); fl = w.tick()
+            self.assertEqual(hub.feeds["personal"]["state"], "ok")
+            self.assertIn("1 running", hub.feeds["personal"]["note"])
+            self.assertEqual(fl["agents"]["attache"]["status"], "WORKING")
+            self.assertNotIn("TEST=1", json.dumps(hub.diagnostics()))  # the key file's contents never travel
+            self.assertEqual(hub.diagnostics()["personalRuntime"], {"configured": True, "model": "muse-wonder", "labelPrefix": "com.igorbeyder.personal."})
 
     def test_jobs_without_records_use_their_logs(self):
         lst = B.parse_launchctl_list("PID\tStatus\tLabel\n-\t0\tcom.beyderco.contacts.sync\n-\t75\tcom.beyderco.maintenance\n"

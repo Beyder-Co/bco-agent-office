@@ -24,14 +24,14 @@ const VIEWS = {
   hotlist: { target: [-5.2, 1.65, -6.15], r: 6.0, theta: 0.0, phi: 1.45 },
   datawall: { target: [7.9, 1.64, 1.4], r: 9, theta: -HALF_PI, phi: 1.42 },
   lounge: { target: [-5.65,.72,4.55], r: 6.3, theta: .18, phi: 1.12 },
-  reading: { target: [5.0,.72,4.5], r: 5.2, theta: .15, phi: 1.14 },
+  study: { target: [5.25, 0.85, 4.5], r: 6.0, theta: 2.78, phi: 0.92 }, // from inside the room, over the crew's desks: the two assistants face the camera, the south glass behind them
   server: { target: [ROOM.server.cx, 1.3, ROOM.server.cz], r: 3.5, theta: 1.12, phi: 1.3 }, // face-on to the corner cabinet
   sculpture: { target: [1.6, 0.8, 4.75], r: 4.6, theta: 0, phi: 1.42 }, // square on, as you look in toward the Forum screen
   // the establishing shot: the office on the Palisades, the Hudson and the bridge below, Manhattan across the river
   hudson: { target: [1, 1.2, -1], r: 60, theta: -0.66, phi: 1.45 },
 };
 /** Presets whose distance is fitted to the free screen area on every resize. */
-const FITTED = ['overview', 'desks', 'boardroom', 'door', 'screen', 'hotsheet', 'hotlist', 'datawall', 'lounge', 'reading', 'server'];
+const FITTED = ['overview', 'desks', 'boardroom', 'door', 'screen', 'hotsheet', 'hotlist', 'datawall', 'lounge', 'study', 'server'];
 
 function fitView(name, pts, availW, availH, fill = 0.96) {
   const v = VIEWS[name];
@@ -75,7 +75,7 @@ function fitAllViews(aw, ah) {
   fitOverview(aw, ah);
   fitDesks(aw, ah);
   fitView('lounge', boxPoints(-8.05,-3.25,0,1.7,3.05,5.8),aw,ah,.88);
-  fitView('reading', boxPoints(3.65,6.35,0,1.7,3.4,5.25),aw,ah,.88);
+  fitView('study', boxPoints(ROOM.study.inlay.x0, ROOM.study.inlay.x1, 0, 1.9, ROOM.study.inlay.z0, ROOM.study.inlay.z1), aw, ah, .9);
   fitView('server', boxPoints(ROOM.server.cx-.7,ROOM.server.cx+.7,0,2.45,ROOM.server.cz-.75,ROOM.server.cz+.75),aw,ah,.90);
   fitView('boardroom', boxPoints(3.4, 8.0, 0, 3.0, -6.2, -3.6), aw, ah, 0.96);
   fitView('door', boxPoints(-10.75, -6.9, 0, 3.0, -1.7, 1.95), aw, ah, 0.94);
@@ -100,7 +100,7 @@ function fitAllViews(aw, ah) {
 }
 /** Desks: every occupied desk with its rug and the label above its agent, centred on the group. */
 function fitDesks(availW, availH) {
-  const slots = OFFICE_STATE.order.map(id => ROOM.slots[OFFICE_STATE.agents[id].slot]);
+  const slots = OFFICE_STATE.order.filter(id => !OFFICE_STATE.agents[id].zone).map(id => ROOM.slots[OFFICE_STATE.agents[id].slot]); // the crew's desks; the study has its own view
   if (!slots.length) return VIEWS.desks.r;
   const xs = slots.map(s => s.x), zs = slots.map(s => s.z);
   VIEWS.desks.target = [(Math.min(...xs) + Math.max(...xs)) / 2 + 0.25, 0.8, (Math.min(...zs) + Math.max(...zs)) / 2 + 0.1];
@@ -117,9 +117,10 @@ const viewOf = name => {
 };
 
 function seatAgent(a) {
-  const slot = ROOM.slots[a.slot];
+  const slot = slotAt(a.slot);
   const L = a.look;
-  const st = new Station({ id: a.id, name: a.name, specialty: a.specialty, color: L.color, seed: 3 + a.slot * 7, screen: L.screen, prop: L.prop });
+  const study = a.slot >= 10; // the study's desks face the room and share one stone floor: no round rug, a different turn
+  const st = new Station({ id: a.id, name: a.name, specialty: a.specialty, color: L.color, seed: 3 + a.slot * 7, screen: L.screen, prop: L.prop, rug: !study, yaw: study ? ROOM.study.yaw : undefined });
   st.group.position.set(slot.x, 0, slot.z);
   st.group.traverse(o => o.isMesh && (o.userData.agentId = a.id));
   scene.add(st.group);
