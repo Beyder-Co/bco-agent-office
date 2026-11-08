@@ -223,6 +223,9 @@ uniform float uNight;
 uniform float uVis;
 uniform float uTime;
 uniform float uLit;
+uniform vec3 uMoonDir;
+uniform float uMoonLit;
+uniform float uCloud;
 ${NOISE}
 vec3 toLin(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
 // the sky's colour in a direction (sRGB, as the sky dome draws it; no sun disc, no clouds)
@@ -596,6 +599,20 @@ void main() {
   float steep = 1.0 - smoothstep(0.4, 0.68, n.y);
   alb = mix(alb, rock, steep * (1.0 - 0.6 * L.x));
   alb = mix(alb, asphalt, road);
+  // the banks: riprap (broken stone dumped against the shore) up to a few metres above the water, its lower metre and a
+  // half dark and wet — the Hudson is tidal here, about 1.3 m between low and high water — with a wrack line of
+  // driftwood and weed where the tide turns
+  float hW = P.y + 204.0;
+  float bankK = (1.0 - smoothstep(3.0, 5.5, hW)) * step(-4.0, hW) * (1.0 - plaza);
+  vec2 cellR = q * 0.9;
+  float rr = vnoise(cellR) * 0.6 + vnoise(cellR * 2.7 + 5.0) * 0.4;
+  float stoneEdge = smoothstep(0.38, 0.5, abs(fract(rr * 3.0) - 0.5) * 2.0);
+  vec3 riprap = mix(vec3(0.16, 0.15, 0.14), vec3(0.3, 0.285, 0.26), vnoise(cellR * 1.7 + 2.0)) * mix(1.0, 0.45, stoneEdge * clamp(1.6 - px, 0.0, 1.0));
+  alb = mix(alb, riprap, bankK);
+  float wet = 1.0 - smoothstep(0.9, 1.5, hW);
+  alb *= mix(1.0, 0.42, wet * bankK);
+  float wrack = (1.0 - smoothstep(0.08, 0.35, abs(hW - 1.6))) * bankK * step(0.45, vnoise(q * 0.4));
+  alb = mix(alb, vec3(0.09, 0.075, 0.05), wrack * 0.7);
   // our own forecourt: pale stone, a lawn ring, the drive
   float r0 = length(q);
   vec3 stone = vec3(0.42, 0.40, 0.37) * (0.92 + 0.12 * vnoise(q * 0.8));
@@ -613,15 +630,19 @@ void main() {
 
   /* the Hudson: wind on the water, the sky and the far shore in it, the sun's path, the lights' streaks */
   const WATER_VERT = `
+attribute vec2 aBank;
 varying vec3 vWorld;
+varying vec2 vBank;
 ${VERT}
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
   vWorld = w.xyz;
+  vBank = aBank;
   gl_Position = projectionMatrix * viewMatrix * vec4(compressP(w.xyz), 1.0);
 }`;
   const WATER_FRAG = `
 varying vec3 vWorld;
+varying vec2 vBank;
 uniform sampler2D uShore;
 uniform sampler2D uGlowTex;
 ${FRAG}
@@ -684,6 +705,10 @@ void main() {
   refl = mix(refl, steelR, hitBridge);
   float F = 0.02 + 0.98 * pow(1.0 - nv, 5.0);
   vec3 body = vec3(0.02, 0.03, 0.027) * (vec3(dot(uSkyCol, vec3(0.3, 0.5, 0.2))) * 1.25 + uSunCol * 0.18);
+  // near the banks: silt in the shallows, browner and a touch brighter (the Hudson is brackish and carries mud here)
+  float dShore = min(vBank.x, vBank.y);
+  float shallow = 1.0 - smoothstep(1.0, 30.0, dShore);
+  body = mix(body, vec3(0.05, 0.045, 0.03) * (vec3(dot(uSkyCol, vec3(0.3, 0.5, 0.2))) * 1.3 + uSunCol * 0.25), shallow * 0.55);
   vec3 col = mix(body, refl, F);
   // the sun's glitter path
   vec3 Hh = normalize(uSunDir + V);
@@ -695,6 +720,19 @@ void main() {
   float sunUp = smoothstep(-0.02, 0.04, uSunDir.y);
   float sparkle = mix(1.0, 0.4 + 1.6 * vnoise(P.xz * 1.7 + vec2(uTime * 0.9, -uTime * 0.6)), detail);
   col += uSunCol * D * Fs * 0.25 / max(nv, 0.15) * sunUp * (1.0 - max(hitShore, hitBridge)) * sparkle;
+  // the moon's path on the water after dark, as broken as the sun's
+  vec3 Hm = normalize(uMoonDir + V);
+  float nhm = max(dot(n, Hm), 1e-3);
+  float tm = (1.0 - nhm * nhm) / (nhm * nhm);
+  float Dm = exp(-tm / sig) / (3.14159 * sig * nhm * nhm * nhm * nhm);
+  col += vec3(0.62, 0.68, 0.8) * Dm * Fs * 0.03 / max(nv, 0.15) * uMoonLit * uNight * smoothstep(-0.01, 0.05, uMoonDir.y) * (1.0 - max(hitShore, hitBridge)) * sparkle;
+  // the wash at the water's edge: a fringe of foam where it breaks on the riprap, and the wakes' swell lapping in
+  float pxF = clamp(2.2 / max(px, 0.3), 0.0, 1.0);
+  float lapPh = dShore * 0.8 - uTime * 1.1 + vnoise(P.xz * 0.05) * 7.0;
+  float lap = smoothstep(0.7, 1.0, sin(lapPh) * 0.5 + 0.5) * (1.0 - smoothstep(0.6, 5.0, dShore));
+  float fringe = 1.0 - smoothstep(0.0, 1.4, dShore);
+  float foam = max(lap * 0.45, fringe * 0.7) * (0.55 + 0.45 * vnoise(P.xz * 0.7 + vec2(uTime * 0.25, 0.0))) * step(-0.5, dShore) * mix(0.35, 1.0, pxF);
+  col = mix(col, vec3(0.85, 0.87, 0.86) * (uSkyCol * 1.5 + uSunCol * 0.5) + vec3(0.01), foam * (1.0 - 0.7 * uNight));
   // after dark, the lights of the shores and the bridge, broken into streaks
   vec4 Lt = texture2D(uGlowTex, vec2(u, 0.5));
   float dImg = Lt.g * 26000.0;
@@ -1031,21 +1069,59 @@ void main() {
   float sunUp = step(-0.05, uSunDir.y);
   float cl = 0.0;
   if (d.y > 0.0) {
-    vec2 p = d.xz / (d.y + 0.1) * 1.4 + vec2(uTime * 0.0035, uTime * 0.0012);
+    // fair-weather cumulus on a deck about 1.5 km up, seen in perspective all the way down to the horizon (the camera
+    // rarely looks more than 13 degrees up, so the clouds have to live low in the frame); how much of the sky they cover
+    // changes from day to day (uCloud: scenery keyed to the date, not a forecast). Far off, where a cloud is smaller than
+    // a pixel, the deck averages to its cover instead of shimmering.
+    vec2 p = d.xz / (d.y + 0.035) * 0.55 + vec2(uTime * 0.0035, uTime * 0.0012);
+    float w = length(fwidth(p));
     float nA = fbm3(p);
     float nB = fbm3(p * 2.3 + vec2(3.1, 1.7));
-    float dens = nA * 0.7 + nB * 0.3;
-    cl = smoothstep(0.57, 0.8, dens) * smoothstep(0.0, 0.18, d.y) * 0.82;
+    float dens = nA * 0.72 + nB * 0.28;
+    float th = mix(0.66, 0.46, uCloud);
+    float far = smoothstep(0.35, 1.6, w);
+    float cov = smoothstep(th - w * 0.25, th + 0.12 + w * 0.25, dens);
+    cov = mix(cov, smoothstep(th + 0.12, th - 0.2, 0.5) * 0.5, far);
+    cl = cov * smoothstep(0.0, 0.025, d.y) * 0.9;
+    // lit tops toward the sun, grey flat bases away from it
     float nS = fbm3(p + normalize(uSunDir.xz + vec2(1e-4, 0.0)) * 0.09);
     float lit = clamp(0.55 + (dens - nS) * 3.0, 0.0, 1.0);
+    lit = mix(lit, 0.6, far);
     vec3 cLit = mix(vec3(1.0, 0.99, 0.97), uGlow * 1.1 + uHor * 0.2, (1.0 - smoothstep(0.02, 0.35, uSunDir.y)) * 0.85);
-    vec3 cShade = mix(uHor * 0.78 + uTop * 0.08, uHor * 0.55 + uGlow * 0.2, uDusk);
-    vec3 cNight = vec3(0.03, 0.032, 0.04) + uCityGlow * 0.55;
+    vec3 cShade = mix(uHor * 0.72 + uTop * 0.1, uHor * 0.5 + uGlow * 0.22, uDusk);
+    vec3 cNight = vec3(0.03, 0.032, 0.04) + uCityGlow * 0.75;
     vec3 cloud = mix(mix(cShade, cLit, lit), cNight, uNight);
     cloud += uGlow * pow(s, 8.0) * 0.35 * sunUp * (1.0 - uNight);
+    // high cirrus, combed out along the wind: thin, bright at sunset
+    vec2 pc = d.xz / (d.y + 0.06) * 0.22 + vec2(uTime * 0.006, 0.0);
+    float ci = vnoise(vec2(pc.x * 0.7 + pc.y * 0.3, pc.y * 6.0 - pc.x * 1.5)) * vnoise(pc * 1.3 + 4.0);
+    float cirrus = smoothstep(0.32, 0.6, ci) * smoothstep(0.01, 0.08, d.y) * (1.0 - far * 0.7) * (0.35 + 0.4 * uCloud) * (1.0 - cl);
+    vec3 cirCol = mix(mix(vec3(1.0), uGlow * 1.25, uDusk * 0.9), cNight, uNight);
+    col = mix(col, cirCol, cirrus * 0.55);
     col = mix(col, cloud, cl);
   }
   col += uGlow * pow(s, 900.0) * 3.0 * sunUp * (1.0 - cl);
+  // the moon at its real place and phase: a sphere lit from the sun's direction, so the terminator falls where it does
+  // in the real sky; earthshine on the dark side; a halo after dark; hidden by cloud
+  vec3 m = normalize(uMoonDir);
+  float cm = dot(d, m);
+  if (m.y > -0.03 && cm > 0.99) {
+    float mr = 0.0052;
+    vec3 off = d - m * cm;
+    float r = length(off) / mr;
+    vec3 e1 = normalize(cross(m, vec3(0.0, 1.0, 0.0)));
+    vec3 e2 = cross(e1, m);
+    vec2 uv = vec2(dot(off, e1), dot(off, e2)) / mr;
+    float disc = 1.0 - smoothstep(1.0 - fwidth(r) * 1.5, 1.0, r);
+    vec3 nm = normalize(off / mr - m * sqrt(max(1.0 - r * r, 0.0)));
+    float lit = smoothstep(-0.06, 0.12, dot(nm, uSunDir));
+    float maria = 0.72 + 0.28 * smoothstep(0.35, 0.65, vnoise(uv * 2.6 + 7.0)) + 0.06 * vnoise(uv * 9.0);
+    vec3 face = vec3(1.0, 0.97, 0.9) * maria * lit;
+    vec3 shine = vec3(0.025, 0.028, 0.035) * uNight;
+    vec3 moon = mix(col + face * 0.55, face * 1.25 + shine, uNight);
+    col = mix(col, moon, disc * (1.0 - cl * 0.9) * step(0.001, max(lit, uNight)));
+    col += vec3(0.55, 0.6, 0.72) * uMoonLit * uNight * exp(-max(r - 1.0, 0.0) * 0.35) * 0.07 * (1.0 - disc) * (1.0 - cl);
+  }
   if (uNight > 0.01) {
     vec2 g = floor(d.xz / (d.y + 0.35) * 260.0);
     float st = step(0.9968, hash12(g)) * smoothstep(0.08, 0.3, d.y) * (1.0 - cl);
@@ -2150,16 +2226,20 @@ void main() {
   }
   function buildWater(mat) {
     const S = sKnots(), cols = 26;
-    const pos = new Float32Array(S.length * cols * 3);
+    const pos = new Float32Array(S.length * cols * 3), bank = new Float32Array(S.length * cols * 2);
     S.forEach((s, i) => {
       const c0 = cJer(s) - 30, c1 = cMan(s) + 30 + 2400 * smooth(16300, BATTERY, s);
+      const open = smooth(15800, 16600, s); // past the Battery the Manhattan bank turns away: no edge foam in the harbour
       for (let j = 0; j < cols; j++) {
-        const [x, z] = toW(s, lerp(c0, c1, j / (cols - 1)));
+        const c = lerp(c0, c1, j / (cols - 1));
+        const [x, z] = toW(s, c);
         pos.set([x, GEO.yW, z], (i * cols + j) * 3);
+        bank.set([c - cJer(s), lerp(cMan(s) - c, 999, open)], (i * cols + j) * 2);
       }
     });
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('aBank', new THREE.BufferAttribute(bank, 2));
     g.setIndex(gridIndex(S.length, cols));
     const m = new THREE.Mesh(g, mat);
     m.frustumCulled = false;
@@ -2469,6 +2549,9 @@ void main() {
       uBare: { value: 0 },
       uSpring: { value: 0 },
       uPx: { value: 1000 },
+      uMoonDir: { value: new THREE.Vector3(0, -1, 0) }, // (56_landscape.js: the moon's real place for the hour)
+      uMoonLit: { value: 0 },
+      uCloud: { value: 0.45 },
     };
     const mat = (vs, fs, extra = {}, opts = {}) => new THREE.ShaderMaterial(Object.assign({ uniforms: Object.assign({}, U, extra), vertexShader: vs, fragmentShader: fs, extensions: { derivatives: true } }, opts));
 
@@ -2508,6 +2591,8 @@ void main() {
     genBridge(steel, ropes);
     genRoadLights(rnd);
     genStreetDetail();
+    const LX = { mat, U, LAMPS, VERT, FRAG, NOISE, GEO, SD, CD, toW, toSC, landY, landAttrs, cJer, cMan, cCliff, isWater, rnd: seeded(5611) };
+    const extra = LANDSCAPE.gen(LX);
     for (const [s, c, y] of AIR) {
       const [x, z] = toW(s, c);
       LAMPS.push([new THREE.Vector3(x, y + 1.5, z), [1.0, 0.08, 0.03], 3.0, 1, rnd()]);
@@ -2591,11 +2676,12 @@ void main() {
     g.add(lights);
     buildBoats(g, cityMat, mat);
     buildHeli(g, cityMat, mat);
+    Object.assign(extra, LANDSCAPE.build(g, LX));
 
     SKY.cityMat = cityMat;
     SKY.groundMat = ground.material;
     SKY.waterMat = waterMat;
-    SKY.info = { counts, buildings: BL.length, landmarkTris: M.P.length / 9, houses: houses.length, tanks: TANKS.length, trees: TREES.length, lights: nL, bridgeTris: steel.P.length / 9, ms: Math.round(performance.now() - t0) };
+    SKY.info = { counts, buildings: BL.length, landmarkTris: M.P.length / 9, houses: houses.length, tanks: TANKS.length, trees: TREES.length, lights: nL, bridgeTris: steel.P.length / 9, landscape: extra, ms: Math.round(performance.now() - t0) };
     return g;
   }
 
@@ -2665,6 +2751,7 @@ function updateSky(dt, force = false) {
   const U = SKY.common;
   U.uTime.value += dt;
   SKY.mesh.position.copy(camera.position);
+  LANDSCAPE.update(U);
   CITY.updateBoats(U.uTime.value, U.uNight.value);
   U.uPx.value = renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
   const now = performance.now();
@@ -2690,6 +2777,17 @@ function updateSky(dt, force = false) {
   U.uFall.value = se.fall;
   U.uBare.value = se.bare;
   U.uSpring.value = se.spring;
+  // the moon, at the same hour as the sun (a ?time= preview moves both)
+  const md = SKY.override != null ? new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + (SKY.override - etOffsetHours(d)) * 3600000) : d;
+  const mp = LANDSCAPE.moonPosition(md, 40.857, -73.958);
+  const mw = mp.az - CITY.GEO.R;
+  U.uMoonDir.value.set(Math.sin(mw) * Math.cos(mp.el), Math.sin(mp.el), -Math.cos(mw) * Math.cos(mp.el));
+  U.uMoonLit.value = clamp((1 - U.uMoonDir.value.dot(U.uSunDir.value)) / 2, 0, 1);
+  // how cloudy the sky is: scenery that changes from day to day with the date, not a weather report
+  const day = Math.floor(md.getTime() / 86400000);
+  const hc = Math.sin(day * 12.9898) * 43758.5453;
+  U.uCloud.value = 0.2 + 0.6 * (hc - Math.floor(hc));
+  SKY.moon = { el: (mp.el * 180) / Math.PI, az: (mp.az * 180) / Math.PI, lit: U.uMoonLit.value, cloud: U.uCloud.value };
   scene.fog.color.copy(s.hor);
   scene.background = s.hor.clone();
   SKY.state = { el: elDeg, night: s.night };

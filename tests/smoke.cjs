@@ -56,7 +56,10 @@ server.listen(0, '127.0.0.1', async () => {
     await page.evaluate(() => window.__office.UI.select('crimson'));
     await page.waitForTimeout(2500);
     check(await page.evaluate(() => location.hash === '#agent/crimson' && !document.getElementById('panel').hidden), 'opening an agent shows its card and #agent/crimson');
-    check(await page.evaluate(() => XRAY.u.uCutR.value > 0.5), 'the line-of-sight tunnel opens for the selected agent');
+    // the first select compiles the tunnel variants of the screens' materials, which stalls software rendering for
+    // seconds: wait for the frames that ease the radius, not for wall-clock time
+    const cutOpened = await page.waitForFunction(() => XRAY.u.uCutR.value > 0.5, null, { timeout: 60000 }).then(() => true, () => false);
+    check(cutOpened, 'the line-of-sight tunnel opens for the selected agent');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !window.__office.controls.glide, null, { timeout: 60000 }).catch(() => {});
     await page.waitForTimeout(800);
