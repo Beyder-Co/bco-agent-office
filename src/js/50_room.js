@@ -1548,7 +1548,7 @@ function buildStudyBoard(g) {
 
 /** An open picture frame for a transparent LED screen: nothing solid behind the glass. One mesh, like the slab
  *  bezels it replaces, so picking and the focus glow work unchanged. */
-function ledFrame(w, h, f = 0.035, d = 0.04) {
+function ledFrame(w, h, f = 0.035, d = 0.04, mat = MAT.aluDark) {
   const o = new THREE.Shape();
   o.moveTo(-w / 2 - f, -h / 2 - f);
   o.lineTo(w / 2 + f, -h / 2 - f);
@@ -1564,7 +1564,7 @@ function ledFrame(w, h, f = 0.035, d = 0.04) {
   o.holes.push(hole);
   const g = new THREE.ExtrudeGeometry(o, { depth: d, bevelEnabled: false });
   g.translate(0, 0, -d / 2);
-  return new THREE.Mesh(g, MAT.aluDark);
+  return new THREE.Mesh(g, mat);
 }
 
 /** The study's glass: a screen, not a room. Clear panes in slim aluminium, a floor channel, posts at the pane joints; stopping

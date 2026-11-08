@@ -10,6 +10,9 @@
    that agent needs Igor and takes the agent's colour while you hover or select it.
    ============================================================================= */
 
+/** The clear pane of a transparent OLED monitor (shared; as the study's glass, a touch more present). */
+const MONITOR_GLASS = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.09, ior: 1.3, envMapIntensity: 0.5, side: THREE.DoubleSide, depthWrite: false, fog: false });
+
 const DESK = { w: 1.4, d: 0.72, top: 0.73, thick: 0.034, nearZ: 0.31 };
 DESK.cz = DESK.nearZ + DESK.d / 2;
 const RUG_R = 1.3;
@@ -1142,16 +1145,17 @@ class Station {
     const mon = new THREE.Group();
     const MW = 0.62, MH = 0.36, base = 0.13, PD = 0.014;
     const PY = base + MH / 2;
-    // [0] the panel: an aluminium shell; the glass, the picture, the ports and the button ride on it
-    const panel = new THREE.Mesh(roundedBoxGeometry(MW, MH, PD, 0.006, 3), MAT.alu);
+    // [0] the panel: a transparent OLED — a clear pane in a slim aluminium frame, the picture floating in the glass
+    // (as the study's board and the wall screens; Igor, Nov 8: every screen is glass)
+    const panel = ledFrame(MW, MH, 0.012, PD, MAT.alu);
     panel.position.y = PY;
     mon.add(panel);
-    const glass = new THREE.Mesh(roundedBoxGeometry(MW - 0.002, MH - 0.002, 0.0016, 0.0008, 1), FMAT.glassBlack);
+    const glass = new THREE.Mesh(roundedBoxGeometry(MW - 0.002, MH - 0.002, 0.0016, 0.0008, 1), MONITOR_GLASS);
     glass.position.z = -PD / 2 - 0.0002;
     panel.add(glass);
     this.screenObj = new Screen(spec.screen || 'code', (spec.seed || 3) * 7);
     const SW = MW - 0.024, SH = SW * (SCR.H / SCR.W);
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), new THREE.MeshBasicMaterial({ map: this.screenObj.tex, toneMapped: false }));
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), new THREE.MeshBasicMaterial({ map: this.screenObj.tex, toneMapped: false, transparent: true, opacity: 0.86, side: THREE.DoubleSide, depthWrite: false }));
     screen.position.set(0, 0.002, -PD / 2 - 0.0012);
     screen.rotation.y = Math.PI;
     screen.userData.noShadow = true;
@@ -1162,22 +1166,22 @@ class Station {
     camLed.rotation.y = Math.PI;
     panel.add(camLed);
     this.camLed = camLed;
-    // the back: a raised mounting plate, a vent slot along the top, the input and the power button
+    // the electronics live in a chin bar along the bottom of the glass: the input, the power button, a vent line
     const deco = new THREE.Group();
-    deco.add(placed(new THREE.Mesh(roundedBoxGeometry(0.2, 0.15, 0.006, 0.0028, 2), MAT.alu), 0, -0.035, PD / 2 + 0.0025));
-    for (let i = 0; i < 18; i++) deco.add(placed(new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.0026, 0.0014), FMAT.port), -0.17 + i * 0.02, MH / 2 - 0.022, PD / 2 + 0.0002));
-    deco.add(placed(new THREE.Mesh(roundedBoxGeometry(0.028, 0.012, 0.004, 0.0015, 1), FMAT.port), 0.06, -0.125, PD / 2 + 0.0012));
+    deco.add(placed(new THREE.Mesh(roundedBoxGeometry(MW, 0.042, PD + 0.006, 0.004, 2), MAT.alu), 0, -MH / 2 + 0.021, 0));
+    for (let i = 0; i < 14; i++) deco.add(placed(new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.0026, 0.0014), FMAT.port), -0.14 + i * 0.02, -MH / 2 + 0.034, PD / 2 + 0.0034));
+    deco.add(placed(new THREE.Mesh(roundedBoxGeometry(0.028, 0.012, 0.004, 0.0015, 1), FMAT.port), 0.06, -MH / 2 + 0.018, PD / 2 + 0.0042));
     const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, 0.0022, 18), FMAT.port);
     btn.rotation.x = HALF_PI;
-    btn.position.set(-MW / 2 + 0.035, -MH / 2 + 0.03, PD / 2 + 0.0011);
+    btn.position.set(-MW / 2 + 0.035, -MH / 2 + 0.018, PD / 2 + 0.0041);
     deco.add(btn);
     mergeByMaterial(deco);
     panel.add(deco);
     const cablePort = new THREE.Group();
-    cablePort.position.set(0.06, -0.125, PD / 2 + 0.003);
+    cablePort.position.set(0.06, -MH / 2 + 0.018, PD / 2 + 0.006);
     panel.add(cablePort);
-    const powerButton = new THREE.Group(); // an anchor on the button (drawn with the back's details)
-    powerButton.position.set(-MW / 2 + 0.035, -MH / 2 + 0.03, PD / 2 + 0.0022);
+    const powerButton = new THREE.Group(); // an anchor on the button (drawn with the chin's details)
+    powerButton.position.set(-MW / 2 + 0.035, -MH / 2 + 0.018, PD / 2 + 0.0052);
     panel.add(powerButton);
     // the stand: one bent aluminium blade from the foot to a hinge behind the panel
     const stand = new THREE.Group();
@@ -1210,7 +1214,7 @@ class Station {
     mon.updateMatrix();
     const inv = new THREE.Matrix4().copy(mon.matrix).invert();
     const g0 = grom.clone().applyMatrix4(inv);
-    const pIn = new THREE.Vector3(0.06, PY - 0.125, PD / 2 + 0.006);
+    const pIn = new THREE.Vector3(0.06, PY - MH / 2 + 0.018, PD / 2 + 0.006);
     const cablePts = [pIn, new THREE.Vector3(0.062, PY - 0.14, 0.04), new THREE.Vector3(0.07, 0.1, 0.14), new THREE.Vector3(0.075, 0.012, 0.16), new THREE.Vector3((0.075 + g0.x) / 2, 0.005, (0.16 + g0.z) / 2), new THREE.Vector3(g0.x, 0.004, g0.z), new THREE.Vector3(g0.x, -0.05, g0.z)];
     const cable = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(cablePts), 36, 0.0028, 6, false), FMAT.nylon);
     cable.userData.noCollide = true;

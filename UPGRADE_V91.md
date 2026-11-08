@@ -32,7 +32,8 @@ A camera-centred ring at the far plane carries the land's true skyline, sampled 
 
 ### The interior asks (Igor, mid-round)
 - **The study's glass**: each of the two runs is now a single pane — the middle posts are gone; a post only where a run starts and ends.
-- **Every screen is transparent LED glass** in an open frame, as the study's board: the Forum screen floats its live feed over the bridge, the data wall shows the town through "Needs you", the hot list hangs in the south glass. The solid slab bezels became open picture frames (one mesh each, so picking and the focus glow are unchanged); the markets band keeps its solid strip, which carries the focus view's backing.
+- **Every screen is transparent LED glass** in an open frame, as the study's board: the Forum screen floats its live feed over the bridge, the data wall shows the town through "Needs you", the hot list hangs in the south glass, and **every desk monitor is a transparent OLED** — a clear pane in a slim aluminium frame with a chin bar for its electronics (the solid shell, back plate and vents went). The slab bezels became open picture frames (one mesh each, so picking and the focus glow are unchanged); the markets band keeps its solid strip, which carries the focus view's backing.
+- **The terrace replanted** (Igor: the straw grass looked wrong): the troughs are now real open planters — four walls you can see into, the soil bed set 7 cm down, a folded rim round an open top, the recessed plinth kept — and the planting is an evergreen sedge, a full healthy green the year round, denser (three staggered rows) with softer arching mounds. The fountain-grass straw season went with the replant.
 
 ## Honesty
 - The ridges, the Verrazzano, the flyway geese, the tides and the moon are real things in real places; their heights, distances, azimuths, seasons and phases are taken from real coordinates and real ephemerides, not invented.

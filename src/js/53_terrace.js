@@ -5,8 +5,9 @@
    bare membrane: a grey margin by day and a black void after dark. Now the crown
    is a terrace in the room's own language: pale limestone pavers on pedestals a
    step below the floor (the slab still reads as a section), a stone coping and a
-   frameless glass balustrade with a slim stainless cap, and low planting that
-   follows the real season — fountain grass and clipped box in charcoal planters.
+   frameless glass balustrade with a slim stainless cap, and low planting in real
+   open troughs — evergreen sedge, green the year round (Igor, Nov 8: no straw),
+   and clipped box in charcoal planters.
    The wider east side carries two teak lounge chairs facing the river; the camera
    side (south) stays low and open so every view still looks straight in.
    After dark the planters wash the pavers in a low warm line; nothing glows above
@@ -29,13 +30,7 @@ const TERRACE = {
   u: { uTNight: { value: 0 } }, // shared by every terrace material: how far into the night the outdoors has gone
 };
 
-function terraceSeason(d = new Date()) {
-  // fountain grass: green through summer, straw from October, cut back to a low tuft in March, new growth by May
-  const doy = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
-  const straw = smooth(265, 300, doy) + (1 - smooth(70, 120, doy)); // autumn into winter
-  const cut = smooth(65, 75, doy) * (1 - smooth(105, 150, doy)); // cut back in March, regrowing through spring
-  return { straw: clamp(straw, 0, 1), height: 1 - 0.7 * cut };
-}
+// (the fountain grass and its straw season went with the replant: evergreen sedge keeps its green all year)
 
 /**
  * Outdoors after dark: the terrace is lit by what spills through the room's glass and by the planters' low warm
@@ -65,12 +60,12 @@ function terraceNightPatch(mat) {
   return mat;
 }
 
-function grassTuftGeometry(seed = 7, blades = 34) {
+function grassTuftGeometry(seed = 7, blades = 44) {
   // one tuft: arching blades, base dark, tip light (vertex colour carries the gradient; the material tints it)
   const rnd = seeded(seed), pos = [], col = [], idx = [];
   for (let b = 0; b < blades; b++) {
-    // fountain grass: an upright core and an outer ring that arches over (the outer blades are the long ones)
-    const outer = rnd(), a = rnd() * TAU, lean = 0.15 + outer * 0.85, len = 0.38 + outer * 0.34 + rnd() * 0.12, w = 0.009 + rnd() * 0.006;
+    // evergreen sedge: a dense upright heart and an outer ring that arches into a soft mound
+    const outer = rnd(), a = rnd() * TAU, lean = 0.2 + outer * 0.75, len = 0.3 + outer * 0.26 + rnd() * 0.1, w = 0.011 + rnd() * 0.007;
     const dx = Math.cos(a), dz = Math.sin(a), px = -dz, pz = dx; // the blade's sideways direction
     const base = pos.length / 3, seg = 4;
     for (let i = 0; i <= seg; i++) {
@@ -78,7 +73,7 @@ function grassTuftGeometry(seed = 7, blades = 34) {
       const half = w * (1 - t * 0.92);
       const cx = dx * r + dx * 0.02 * rnd(), cz = dz * r;
       pos.push(cx - px * half, y, cz - pz * half, cx + px * half, y, cz + pz * half);
-      const k = 0.3 + 0.7 * Math.pow(t, 0.8);
+      const k = 0.24 + 0.76 * Math.pow(t, 0.7);
       col.push(k, k, k, k, k, k);
     }
     for (let i = 0; i < seg; i++) {
@@ -215,16 +210,23 @@ function buildTerrace() {
   run('z', T.x1 - inner, -1.2, T.z1 - 1.4, 2.4, 0.6);
   const squares = [{ x: -9.55, z: -2.45 }, { x: -9.55, z: 2.7 }, { x: -9.55, z: -5.5 }, { x: -9.55, z: 6.6 }, { x: 9.5, z: 6.95 }];
   const PH = 0.5;
-  for (const t of troughs) {
-    g.add(box(t.w, PH, t.d, mats.planter, t.x, T.top + PH / 2, t.z));
-    g.add(box(t.w - 0.06, 0.01, t.d - 0.06, mats.soil, t.x, T.top + PH - 0.04, t.z));
-    g.add(box(t.w + 0.03, 0.025, t.d + 0.03, mats.lip, t.x, T.top + PH + 0.0125, t.z)); // a folded lip, a shade darker
-    g.add(box(t.w - 0.04, 0.03, t.d - 0.04, mats.deckEdge, t.x, T.top + 0.015, t.z)); // a recessed plinth: the trough floats
-  }
-  for (const s of squares) {
-    g.add(box(0.62, 0.62, 0.62, mats.planter, s.x, T.top + 0.31, s.z));
-    g.add(box(0.56, 0.01, 0.56, mats.soil, s.x, T.top + 0.58, s.z));
-  }
+  /** A real planter: four walls round an open top (the inside face shows above the soil), the soil bed set 7 cm
+   *  down, a folded rim that overhangs the walls without closing the opening, and a recessed plinth. */
+  const planterOpen = (x, z, w, d, h) => {
+    const wall = 0.035, rim = T.top + h;
+    g.add(box(w, h, wall, mats.planter, x, T.top + h / 2, z - d / 2 + wall / 2));
+    g.add(box(w, h, wall, mats.planter, x, T.top + h / 2, z + d / 2 - wall / 2));
+    g.add(box(wall, h, d - 2 * wall, mats.planter, x - w / 2 + wall / 2, T.top + h / 2, z));
+    g.add(box(wall, h, d - 2 * wall, mats.planter, x + w / 2 - wall / 2, T.top + h / 2, z));
+    g.add(box(w - 2 * wall, 0.014, d - 2 * wall, mats.soil, x, rim - 0.07, z)); // the bed, mulch-dark, down in the trough
+    for (const [sx, sz, bw, bd, ox, oz] of [
+      [0, -1, w + 0.03, 0.085, 0, -d / 2 + 0.028], [0, 1, w + 0.03, 0.085, 0, d / 2 - 0.028],
+      [-1, 0, 0.085, d + 0.03, -w / 2 + 0.028, 0], [1, 0, 0.085, d + 0.03, w / 2 - 0.028, 0],
+    ]) g.add(box(bw, 0.03, bd, mats.lip, x + ox, rim + 0.015, z + oz)); // the folded rim, open in the middle
+    g.add(box(w - 0.04, 0.03, d - 0.04, mats.deckEdge, x, T.top + 0.015, z)); // the recessed plinth: the trough floats
+  };
+  for (const t of troughs) planterOpen(t.x, t.z, t.w, t.d, PH);
+  for (const s of squares) planterOpen(s.x, s.z, 0.62, 0.62, 0.62);
   // the evening wash: a thin warm line under the lip of each trough, facing the pavers (dark by day)
   const glowRows = [];
   for (const t of troughs) {
@@ -239,22 +241,24 @@ function buildTerrace() {
   const tuft = grassTuftGeometry(11, 18);
   const spots = [], rnd = seeded(902);
   for (const t of troughs) {
-    const n = Math.round((Math.max(t.w, t.d) / 0.2));
+    const n = Math.round((Math.max(t.w, t.d) / 0.13));
     for (let i = 0; i < n; i++) {
       const u = (i + 0.5) / n - 0.5;
-      const along = t.w > t.d, row = (i % 2 ? 0.09 : -0.09);
-      const jx = (along ? 0 : row) + (rnd() - 0.5) * 0.06, jz = (along ? row : 0) + (rnd() - 0.5) * 0.06;
-      spots.push([t.x + (along ? u * (t.w - 0.2) : jx), T.top + PH - 0.04, t.z + (along ? jz : u * (t.d - 0.2)), rnd() * TAU, 0.8 + rnd() * 0.45, rnd()]);
+      const along = t.w > t.d, row = ((i % 3) - 1) * 0.1;
+      const jx = (along ? 0 : row) + (rnd() - 0.5) * 0.05, jz = (along ? row : 0) + (rnd() - 0.5) * 0.05;
+      spots.push([t.x + (along ? u * (t.w - 0.22) : jx), T.top + PH - 0.07, t.z + (along ? jz : u * (t.d - 0.22)), rnd() * TAU, 0.85 + rnd() * 0.4, rnd()]);
     }
   }
   const grass = new THREE.InstancedMesh(tuft, mats.grass, spots.length);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), p3 = new THREE.Vector3();
   const tint = new THREE.Color();
+  mats.grass.color.copy(lin('#4f7f39')); // evergreen sedge: a full green, winter and summer
   spots.forEach((s, i) => {
     q.setFromEuler(e.set(0, s[3], 0));
     m4.compose(p3.set(s[0], s[1], s[2]), q, sc.set(s[4], s[4], s[4]));
     grass.setMatrixAt(i, m4);
-    grass.setColorAt(i, tint.setScalar(0.85 + 0.3 * s[5]));
+    // each plant its own green: most a touch brighter or deeper, a few warmer
+    grass.setColorAt(i, tint.setRGB(0.8 + 0.35 * s[5], 0.85 + 0.3 * ((s[5] * 7.13) % 1), 0.8 + 0.3 * ((s[5] * 3.71) % 1)));
   });
   grass.castShadow = true;
   grass.receiveShadow = true;
@@ -267,7 +271,7 @@ function buildTerrace() {
     const r = 0.3 + (i % 2) * 0.04;
     const b = new THREE.Mesh(boxGeo, mats.box);
     b.scale.set(r, r * 0.92, r);
-    b.position.set(s.x, T.top + 0.6 + r * 0.82, s.z);
+    b.position.set(s.x, T.top + 0.55 + r * 0.82, s.z);
     b.castShadow = true;
     b.userData.keep = true;
     g.add(b);
@@ -287,7 +291,6 @@ function buildTerrace() {
 
   for (const [k, m] of Object.entries(mats)) if (k !== 'glow') terraceNightPatch(m);
   terraceNightPatch(glass);
-  applyTerraceSeason();
   shadowAll(g, true, true);
   g.traverse(o => { if (o.isMesh && o.material && (o.material.transparent || o.material === mats.glow)) o.castShadow = false; });
   mergeByMaterial(g);
@@ -295,27 +298,10 @@ function buildTerrace() {
   return g;
 }
 
-/** The grass's colour and height for today: green in summer, straw now (November), cut back in March. */
-function applyTerraceSeason(d = new Date()) {
-  const T = TERRACE;
-  if (!T.grass) return;
-  const s = terraceSeason(d);
-  T.grass.material.color.copy(lin('#6f8a4f')).lerp(lin('#bfa577'), s.straw);
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), p3 = new THREE.Vector3();
-  T.grass.userData.spots.forEach((sp, i) => {
-    q.setFromEuler(e.set(0, sp[3], 0));
-    m4.compose(p3.set(sp[0], sp[1], sp[2]), q, sc.set(sp[4], sp[4] * s.height, sp[4]));
-    T.grass.setMatrixAt(i, m4);
-  });
-  T.grass.instanceMatrix.needsUpdate = true;
-}
-
 /** After dark the planters' line comes up (and never above knee height); by day it is off. */
 function updateTerrace() {
   const T = TERRACE;
   if (!T.glow) return;
-  const day = new Date().toDateString();
-  if (T._day !== day) { T._day = day; applyTerraceSeason(); } // an office left open for days still turns with the season
   const n = (SKY.state && SKY.state.night) || 0;
   const k = smooth(0.15, 0.7, n);
   if (T._k !== undefined && Math.abs(T._k - k) < 0.002) return;
