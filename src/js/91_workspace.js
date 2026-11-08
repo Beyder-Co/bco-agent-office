@@ -4,7 +4,7 @@
   const ET = 'America/New_York';
   const GROUPS = {system:'System attention',overdue:'Overdue follow-up',approval:'Prepared for review',today:'Due today',appointment:'Appointments',lead:'New leads'};
   const KIND = {view:'Property views',save:'Saved properties',inquiry:'Inquiries',page:'Website visits',email:'Email opens',click:'Email clicks',text_in:'Inbound texts',text_out:'Outbound texts',lead:'New leads'};
-  const SCREEN = {main:'Activity and highlights',today:'Follow-ups and leads',pipeline:'Pipeline and dates',hotnew:'NJMLS new and open',hotdone:'NJMLS price and sold',ticker:'Market rates',manual:'Operating manual'};
+  const SCREEN = {main:'Activity and highlights',today:'Follow-ups and leads',pipeline:'Pipeline and dates',hotnew:'NJMLS new and open',hotdone:'NJMLS price and sold',ticker:'Market rates',study:'The study board',manual:'Operating manual'};
   const CAMERAS = {overview:'Office overview',hudson:'Hudson view',desks:'Agent desks',boardroom:'Market room',datawall:'Data wall',hotlist:'Hot list',screen:'Forum screen',server:'Server cabinet',door:'Office entrance',lounge:'Left lounge',study:'The study'};
   const W = {tab:'brief',query:'',group:'all',kind:'all',hours:'all',commandIndex:0,returnFocus:null};
   const html = value => String(value == null ? '' : value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

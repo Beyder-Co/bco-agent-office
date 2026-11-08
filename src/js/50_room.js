@@ -34,6 +34,8 @@ const ROOM = {
   study: { x: 5.2, z: 4.95, yaw: Math.PI, inlay: { x0: 3.0, x1: 7.75, z0: 3.55, z1: 5.72 }, console: { x: 7.5, z: 4.7, w: 0.4, d: 1.5 },
     /** The glass: a 2.25 m screen along the aisle side between x0 and x1, open at both ends (the two ways in), and a return down the west side. */
     glass: { h: 2.25, run: { x0: 4.05, x1: 6.35 }, exit: 1.05 },
+    /** The board: a wide screen on a low graphite plinth behind the two desks, facing the room, below the ticker band. */
+    board: { x: 5.2, z: 5.6, w: 3.4, h: 1.9, y0: 0.5 },
     seats: [{ x: 4.45, z: 4.95 }, { x: 5.95, z: 4.95 }] },
   tree: { x: 1.6, z: 4.75 }, // the sculpture of the mark, front middle
   /** Ten desk slots; the last two are reserved for agents who join later. */
@@ -1508,7 +1510,32 @@ function buildStudy(room) {
   pot.position.set(C.x, 0.09 + 0.55 + 0.012, C.z - 0.42);
   g.add(pot);
   buildStudyGlass(g);
+  buildStudyBoard(g);
   room.add(g);
+}
+
+/** The study's dashboard: open and closed personal tasks and what needs Igor, drawn from the same state as the cards.
+ *  A free-standing media wall (screen in a dark bezel on a graphite plinth) so the south glass stays glass. */
+function buildStudyBoard(g) {
+  const B = ROOM.study.board;
+  const grp = new THREE.Group();
+  const bezel = new THREE.Mesh(roundedBoxGeometry(B.w + 0.06, B.h + 0.06, 0.06, 0.016, 2), MAT.aluDark);
+  grp.add(bezel);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.h), MAT.screenOff);
+  face.position.z = 0.0312;
+  grp.add(face);
+  face.userData.pick = bezel.userData.pick = 'screen:study';
+  // the plinth and the two blades that carry the screen
+  const plinth = box(B.w * 0.7, 0.08, 0.36, MAT.graphite, 0, -(B.h / 2) - B.y0 + 0.04, -0.06);
+  grp.add(plinth);
+  for (const sx of [-1, 1]) grp.add(box(0.05, B.y0, 0.05, MAT.aluDark, sx * B.w * 0.3, -(B.h / 2) - B.y0 / 2, -0.03));
+  grp.position.set(B.x, B.y0 + B.h / 2, B.z);
+  grp.rotation.y = Math.PI; // faces the room (the desks look north; the board stands behind them)
+  grp.userData.keep = true;
+  addProxy(grp, B.w * 0.7, 0.3, 0.4, 0, -(B.h / 2) - B.y0 + 0.15, -0.06);
+  g.add(grp);
+  ROOM_OBJ.panels.push({ key: 'study', title: 'The study', group: grp, face, bezel, w: B.w, h: B.h });
+  ROOM_OBJ.pickables.push(grp);
 }
 
 /** The study's glass: a screen, not a room. Clear panes in slim aluminium, a floor channel, posts at the pane joints; stopping

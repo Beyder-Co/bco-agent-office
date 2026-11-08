@@ -158,8 +158,8 @@ const VIEW = {
         lifeAnimate('main', performance.now() + 2700);
       }
     });
-    BUS.on('task', () => this.dirty('main'));
-    BUS.on('meta', () => this.dirty('main', 'hotnew', 'hotdone', 'today', 'pipeline', 'ticker'));
+    BUS.on('task', () => this.dirty('main', 'study'));
+    BUS.on('meta', () => this.dirty('main', 'hotnew', 'hotdone', 'today', 'pipeline', 'ticker', 'study'));
     BUS.on('hotsheet', ev => {
       this.dirty('hotnew', 'hotdone');
       lifePing('hotnew');
@@ -294,7 +294,7 @@ const VIEW = {
       mk('hotnew', ROOM_OBJ.hotlist.hotnew, hotWidth, 936, (g, W, H, d) => drawHotList('new', g, W, H, d));
       mk('hotdone', ROOM_OBJ.hotlist.hotdone, hotWidth, 936, (g, W, H, d) => drawHotList('done', g, W, H, d));
     }
-    for (const p of ROOM_OBJ.panels || []) mk(p.key, p, 2048, 1152, p.key === 'pipeline' ? drawPipeline : p.key === 'today' ? drawNeeds : drawTodayLeads);
+    for (const p of ROOM_OBJ.panels || []) mk(p.key, p, 2048, p.key === 'study' ? Math.round(2048 * ROOM.study.board.h / ROOM.study.board.w) : 1152, p.key === 'pipeline' ? drawPipeline : p.key === 'today' ? drawNeeds : p.key === 'study' ? drawStudyBoard : drawTodayLeads);
     // the strip's own aspect; a long strip gets a wider canvas so its words stay sharp (a full-wall strip: 8192 wide)
     const tkAsp = ROOM_OBJ.ticker ? ROOM_OBJ.ticker.w / ROOM_OBJ.ticker.h : 7;
     const TKW = Math.min(tkAsp > 12 ? 8192 : tkAsp > 8 ? 4096 : 2048, renderer.capabilities.maxTextureSize || 4096);
@@ -887,6 +887,78 @@ function drawNeeds(ctx, W, H, detail) {
     hitAdd('today', M - 20, y - 56, W - M + 20, y + 64, { link: it.link || null, label: it.who || null, need: it });
   });
   if (items.length > shown.length) scText(ctx, `+ ${items.length - shown.length} more — click the screen for the full list`, M + 230, top + 70 + shown.length * rh, 34, SC.dim, 500, W - 2 * M);
+}
+
+/* ---------- the study's board: the personal pair's open and closed work, and what needs Igor ---------- */
+
+/** The study's board. Everything on it comes from OFFICE_STATE (tasks, approvals, held items, the personal feed);
+ *  the header says TEST or the runtime's real state, so the board never claims more than the cards do. */
+function drawStudyBoard(ctx, W, H, detail) {
+  hitReset('study');
+  const M = 72;
+  const live = OFFICE_STATE.meta.feed === 'live';
+  const pf = OFFICE_STATE.meta.bridge && OFFICE_STATE.meta.bridge.feeds && OFFICE_STATE.meta.bridge.feeds.personal;
+  const ids = OFFICE_STATE.order.filter(id => OFFICE_STATE.agents[id].zone === 'personal');
+  const mine = t => ids.includes(t.agentId);
+  const tasks = OFFICE_STATE.tasks.filter(mine);
+  const open = tasks.filter(t => t.column !== 'done'), done = tasks.filter(t => t.column === 'done');
+  const needs = OFFICE_STATE.approvals.filter(mine), held = OFFICE_STATE.held.filter(mine);
+  ctx.fillStyle = SC.bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  // header: the runtime's state, in its own words
+  const F = !live ? { status: 'awaiting', note: 'TEST sample · no personal runtime is connected' }
+    : pf && (pf.state === 'ok' || pf.state === 'attention') ? { status: 'live', asOf: pf.asOf ? new Date(pf.asOf).getTime() : null }
+    : pf && pf.state === 'stale' ? { status: 'stale', note: 'last check overdue' } : { status: 'error', note: 'Personal runtime · not connected' };
+  scHeader(ctx, W, M, 'The study', F, detail ? 72 : 84, 'Personal · outside Beyder&Co. · nothing sent, booked or paid without Igor');
+  if (!live) scEyebrow(ctx, 'TEST · sample data', W - M, M + 112, 22, SC.dim, 5, 'right');
+  const top = 250;
+  scRule(ctx, M, W - M, top - 36);
+  // three figures: open, done today, needs Igor
+  const cols = [['Open', open.length, SC.ink], ['Done today', done.length, SC.ink], ['Needs Igor', needs.length, needs.length ? BRAND.crimson : SC.ink]];
+  const cw = (W - 2 * M) / 3;
+  cols.forEach(([label, n, col], i) => {
+    const x = M + i * cw;
+    scText(ctx, String(n), x, top + 128, 150, col, 600);
+    scEyebrow(ctx, label, x + 4, top + 172, 26, SC.dim, 5);
+  });
+  scRule(ctx, M, W - M, top + 212);
+  // two columns, one per assistant: in progress first, then queued, then today's done
+  const y0 = top + 296, half = (W - 2 * M - 60) / 2, rh = 82;
+  ids.slice(0, 2).forEach((id, k) => {
+    const a = OFFICE_STATE.agents[id], x = M + k * (half + 60);
+    const nm = a.name.charAt(0) + a.name.slice(1).toLowerCase();
+    scText(ctx, nm, x, y0, 52, SC.ink, 600, half);
+    scText(ctx, a.specialty, x + ctx.measureText(nm).width + 28, y0, 30, SC.dim, 500, half - 300);
+    const rows = tasks.filter(t => t.agentId === id).sort((p, q) => ({ progress: 0, queued: 1, done: 2 }[p.column] - { progress: 0, queued: 1, done: 2 }[q.column]) || (q.at || 0) - (p.at || 0));
+    const maxRows = Math.floor((H - y0 - 60 - (needs.length || held.length ? 150 : 0)) / rh) - 1;
+    rows.slice(0, Math.max(1, maxRows)).forEach((t, i) => {
+      const y = y0 + 84 + i * rh;
+      const mark = t.column === 'progress' ? '●' : t.column === 'queued' ? '○' : '✓';
+      const col = t.column === 'done' ? SC.dim : SC.ink;
+      scText(ctx, mark, x, y, 34, t.column === 'progress' ? BRAND.crimson : col, 600, 44);
+      scText(ctx, t.title || '', x + 52, y, 40, col, t.column === 'done' ? 500 : 600, half - 52);
+      if (t.note && t.column !== 'done') scText(ctx, t.note, x + 52, y + 32, 26, SC.dim, 500, half - 52);
+    });
+    if (!rows.length) scText(ctx, live ? 'No personal work reported' : 'Nothing queued', x, y0 + 84, 34, SC.dim, 500, half);
+    if (rows.length > maxRows) scText(ctx, `+ ${rows.length - maxRows} more`, x, y0 + 84 + maxRows * rh, 28, SC.dim, 500, half);
+  });
+  // what needs Igor, and what he held
+  if (needs.length || held.length) {
+    const y = H - 120;
+    scRule(ctx, M, W - M, y - 60);
+    const first = needs[0] || null;
+    if (first) {
+      const nm = (OFFICE_STATE.agents[first.agentId] || { name: '' }).name;
+      scEyebrow(ctx, 'Needs you', M, y - 10, 24, BRAND.crimson, 5);
+      scText(ctx, first.need, M + 220, y, 34, SC.ink, 600, W - 2 * M - 220 - 300);
+      scText(ctx, (nm.charAt(0) + nm.slice(1).toLowerCase()) + (needs.length > 1 ? ` · +${needs.length - 1} more` : ''), W - M, y, 28, SC.dim, 500, 300, 'right');
+    } else {
+      scEyebrow(ctx, 'Held', M, y - 10, 24, SC.dim, 5);
+      scText(ctx, `${held.length} step${held.length === 1 ? '' : 's'} held by Igor · ${held[0].need}`, M + 160, y, 30, SC.dim, 500, W - 2 * M - 160);
+    }
+  }
 }
 
 /** What a gate asks for, in the room's words: its subject, the action itself, and up to two facts (from gateBrief when there is one). */
