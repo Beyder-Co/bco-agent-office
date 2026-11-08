@@ -89,7 +89,15 @@ Make the office tell Igor what changed, and take him to it in one key. Every tra
 
 ### Measurements
 
-MEASUREMENTS_R3
+| | before (8.9 branch) | after round two | after round three |
+|---|---|---|---|
+| Draw calls · desks / overview / hudson | 890 / 986 / 984 | 915 / 913 / 1017 | 921 / 1019 / 1017 |
+| Triangles · desks / overview | 1.86 M / 1.90 M | 1.83 M / 1.82 M | 1.83 M / 1.87 M |
+| Geometries / textures / programs | 984 / 111 / 39 | 1006 / 109 / 52 | 1010 / 110 / 52 |
+| Time to ready (serial run, SwiftShader) | 21.0 s | not comparable | 26.4 s |
+| Requests at boot · console errors | 4 · 0 | 4 · 0 | 4 · 0 |
+
+Round three adds 6 draw calls at the desks: the helicopter (one instanced mesh plus its lights). Floor ripples draw only while running. The jets are points inside the existing city light buffer. Time to ready is up about 5 s on CPU rendering, from the terrace, boats and extra shader variants compiled at boot. On the Studio's GPU this is shader compilation, not frame cost.
 
 ### Sweep A — design, realism, usefulness (five weakest points, all fixed)
 1. The helicopter first flew 100 m above the roof, out of frame in every view. It now flies at roof height, as the corridor's tours do relative to a cliff-top tower.
