@@ -651,7 +651,7 @@ function choreographArrival(a) {
         const title = a.instruction || 'First-day setup';
         if (!SIM.enabled) {
           setAgentStatus(a.id, 'IDLE', { detail: 'Awaiting live events' });
-          if (typeof UI !== 'undefined') UI.toast(`${a.name} is at desk ${w.slot + 1}`);
+          if (typeof UI !== 'undefined') UI.toast(`${a.name} is at desk ${w.slot + 1}`, { agent: a.id });
           return;
         }
         const task = moveTask({ title, agentId: a.id }, 'progress');
@@ -660,7 +660,7 @@ function choreographArrival(a) {
         s.i = 0;
         s.cycle = 1;
         beginStep(a.id, s, SIM.clock());
-        if (typeof UI !== 'undefined') UI.toast(`${a.name} is at desk ${w.slot + 1}`);
+        if (typeof UI !== 'undefined') UI.toast(`${a.name} is at desk ${w.slot + 1}`, { agent: a.id });
       },
     });
   };

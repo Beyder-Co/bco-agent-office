@@ -34,6 +34,7 @@ async function boot() {
   controls.set(viewOf('desks')); // the crew, large enough to read; Overview is one click away
   UI.markView('desks');
   UI._booted = true;
+  RIPPLE.init();
   OfficeExperience.init();
   XRAY.patchTree(scene.getObjectByName('room'));
   if (TERRACE.group) XRAY.patchTree(TERRACE.group);
@@ -99,6 +100,7 @@ async function boot() {
     updateTerrace();
     VIEW.update(dt, t);
     XRAY.update(dt);
+    RIPPLE.update(dt);
     heldLate(motionDt); // anything a robot holds goes where its palms are now (after the IK and the tweens)
     renderer.render(scene, camera);
     OFFICE_RUNTIME.frames++;
@@ -112,7 +114,7 @@ async function boot() {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__office = { WORLD, controls, camera, THREE, ROOM, ROOM_OBJ, UI, VIEW, SIM, MOVE, AMB, OFFICE_STATE, SKY, NAV, DESTINATIONS, COLLIDERS, scene, renderer, Figure, figureSpec, DESK, HIGH5, blockedAt, INCIDENT, SEATED_MODES, FIELD: typeof FIELD !== "undefined" ? FIELD : null };
+  window.__office = { WORLD, controls, camera, THREE, ROOM, ROOM_OBJ, UI, VIEW, SIM, MOVE, AMB, OFFICE_STATE, SKY, NAV, DESTINATIONS, COLLIDERS, scene, renderer, ATTENTION, AWAY, RIPPLE, Figure, figureSpec, DESK, HIGH5, blockedAt, INCIDENT, SEATED_MODES, FIELD: typeof FIELD !== "undefined" ? FIELD : null };
 }
 boot().catch(err => {
   OFFICE_RUNTIME.errors++;

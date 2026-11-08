@@ -201,7 +201,11 @@ class CalmControls {
       phi: view.phi ?? from.phi,
       theta: view.theta != null ? from.theta + wrapAngle(view.theta - from.theta) : from.theta,
     };
-    this.glide = { from, to, t: 0, dur };
+    // a long move rises a little and takes a little longer, like a camera operator stepping back to cross the room;
+    // a short one stays low and quick (9.0: every glide ran the same 1.7 s straight line, through walls on the long ones)
+    const travel = from.target.distanceTo(to.target) + Math.abs(to.theta - from.theta) * Math.max(from.r, to.r) * 0.35;
+    const arc = clamp((travel - 3) / 30, 0, 1);
+    this.glide = { from, to, t: 0, dur: dur * lerp(0.85, 1.25, arc), lift: arc * 0.22 * Math.max(from.r, to.r), tilt: arc * 0.06 };
   }
   update(dt) {
     if (this.glide) {
@@ -209,9 +213,10 @@ class CalmControls {
       g.t = Math.min(1, g.t + dt / g.dur);
       const k = easeInOut(g.t);
       this.goalTarget.lerpVectors(g.from.target, g.to.target, k);
-      this.goal.r = lerp(g.from.r, g.to.r, k);
+      const hump = Math.sin(Math.PI * k);
+      this.goal.r = g.from.r * Math.pow(g.to.r / g.from.r, k) + (g.lift || 0) * hump; // zoom in equal ratios, so a close-up neither lurches nor crawls
       this.goal.theta = lerp(g.from.theta, g.to.theta, k);
-      this.goal.phi = lerp(g.from.phi, g.to.phi, k);
+      this.goal.phi = clamp(lerp(g.from.phi, g.to.phi, k) - (g.tilt || 0) * hump, this.limits.phiMin, this.limits.phiMax);
       this.target.copy(this.goalTarget);
       Object.assign(this.sph, this.goal);
       if (g.t >= 1) this.glide = null;

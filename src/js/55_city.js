@@ -2338,6 +2338,7 @@ void main() {
   }
   const _bm = new Float32Array(16);
   function updateBoats(time, night) {
+    updateHeli(time);
     if (!BOATS.mesh) return;
     const arr = BOATS.mesh.instanceMatrix.array;
     let k = 0;
@@ -2364,6 +2365,77 @@ void main() {
       const x = q.P.x + l[1] * q.c + l[2] * q.sn * 3, z = q.P.z - l[1] * q.sn + l[2] * q.c * 3;
       pos[j * 3] = x; pos[j * 3 + 1] = q.show ? GEO.yW + l[3] : -1e4; pos[j * 3 + 2] = z;
     });
+    pts.geometry.attributes.position.needsUpdate = true;
+  }
+
+  /* ---------- the air over the river (9.0): a tour helicopter working the Hudson corridor, and jets in the distance
+     The corridor below 1,300 ft is flown by sightseeing helicopters all day; jets for Teterboro and LaGuardia cross
+     the sky higher up. Both are lights first: by day a dark speck and a faint beacon, by night beacon, strobe and
+     navigation lights. The helicopter loops within a kilometre and a half (inside the uncompressed range); the jets
+     are shader-driven traffic points, no CPU work at all. */
+  function genAir(rnd) {
+    const jet = (s0, c0, y0, s1, c1, y1, speed) => {
+      const [x0, z0] = toW(s0, c0), [x1, z1] = toW(s1, c1);
+      const a = new THREE.Vector3(x0, GEO.yW + y0, z0), run = new THREE.Vector3(x1, GEO.yW + y1, z1).sub(a);
+      const ph = rnd(), rate = speed / run.length();
+      LAMPS.push([a, [1.0, 0.97, 0.9], 5.5, 2, ph, rate, run]); // the landing light
+      LAMPS.push([a.clone().add(new THREE.Vector3(0, 3, 0)), [1.0, 0.16, 0.1], 2.2, 2, ph - 0.0012, rate, run]); // the beacon, just behind
+    };
+    jet(-9000, 4200, 1500, 9000, -2500, 650, 78); // descending north-west across the river towards Teterboro
+    jet(8000, 6500, 2100, -9000, 5200, 1700, 92);
+    jet(-7000, -6000, 3200, 9000, 7000, 3200, 120); // high and level
+  }
+  const HELI = { mesh: null, lights: null, rotor: 0 };
+  function buildHeli(g, cityMat, mat) {
+    // body parts: [dx (forward), dy, dz, len, h, width, pal]
+    const parts = [[0, 0, 0, 7.5, 2.6, 2.4, 13], [4.2, 0.5, 0, 2.2, 1.6, 2.0, 13], [-7.2, 1.0, 0, 7.5, 0.55, 0.55, 13], [-10.6, 1.0, 0, 1.0, 2.2, 0.25, 13],
+      [0.2, -0.9, -1.1, 5.5, 0.12, 0.12, 13], [0.2, -0.9, 1.1, 5.5, 0.12, 0.12, 13], [0, 1.75, 0, 1.2, 0.8, 1.0, 13], [0, 2.3, 0, 11.5, 0.08, 0.35, 13], [0, 2.3, 0, 11.5, 0.08, 0.35, 13]];
+    HELI.parts = parts;
+    const geo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0); // as the city's boxes: the base at 0
+    geo.deleteAttribute('uv');
+    const mesh = new THREE.InstancedMesh(geo, cityMat, parts.length);
+    const data = new Float32Array(parts.length * 4);
+    parts.forEach((p, k) => data.set([91 + k * 2.3, p[6] + 16 * FL.DARK, 6, GEO.yW + 190], k * 4));
+    geo.setAttribute('aData', new THREE.InstancedBufferAttribute(data, 4));
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    g.add(mesh);
+    HELI.mesh = mesh;
+    // beacon (red, flashing), tail strobe (white, flashing), port red, starboard green, the nose's landing light at night
+    const L = [[0, 2.2, 0, [1, 0.12, 0.08], 2.4, 1, 0.0], [-10.8, 2.2, 0, [1, 1, 1], 2.2, 1, 0.5], [0.5, 0, -1.4, [1, 0.12, 0.08], 1.4, 3], [0.5, 0, 1.4, [0.25, 1, 0.45], 1.4, 3], [5.2, -0.6, 0, [1, 0.95, 0.85], 3.2, 3]];
+    const n = L.length, lg = new THREE.BufferGeometry();
+    const col = new Float32Array(n * 3), info = new Float32Array(n * 4);
+    L.forEach((l, j) => { col.set(l[3], j * 3); info.set([l[4], l[5], l[6] || 0, 0], j * 4); });
+    lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    lg.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+    lg.setAttribute('aInfo', new THREE.BufferAttribute(info, 4));
+    lg.setAttribute('aMove', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const pts = new THREE.Points(lg, mat(LIGHT_VERT, LIGHT_FRAG, {}, { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    pts.frustumCulled = false;
+    g.add(pts);
+    HELI.lights = { pts, L };
+  }
+  /** One loop of the corridor every four minutes: north along the Manhattan side, south along the New Jersey side. */
+  function heliPose(time) {
+    const th = (time / 240) * Math.PI * 2;
+    const S = 1250, C = 190, c0 = 700;
+    const s = -S * Math.cos(th), c = c0 + C * Math.sin(th);
+    const ds = S * Math.sin(th), dc = C * Math.cos(th);
+    const [x, z] = toW(s, c), [dx, dz] = toW(ds, dc);
+    return { x, y: GEO.yW + 205 + 12 * Math.sin(th * 2), z, yaw: Math.atan2(-dz, dx) };
+  }
+  function updateHeli(time) {
+    if (!HELI.mesh) return;
+    const P = heliPose(time), arr = HELI.mesh.instanceMatrix.array;
+    const c = Math.cos(P.yaw), sn = Math.sin(P.yaw);
+    HELI.parts.forEach((p, k) => {
+      const x = P.x + p[0] * c + p[2] * sn, z = P.z - p[0] * sn + p[2] * c;
+      const spin = k >= 7 ? time * 31 + (k - 7) * HALF_PI : 0; // the two blades turn (a blur at this distance)
+      setTRS(arr, k * 16, x, P.y + p[1] - p[4] / 2, z, P.yaw + spin, p[3], p[4], p[5]);
+    });
+    HELI.mesh.instanceMatrix.needsUpdate = true;
+    const { pts, L } = HELI.lights, pos = pts.geometry.attributes.position.array;
+    L.forEach((l, j) => { pos[j * 3] = P.x + l[0] * c + l[2] * sn; pos[j * 3 + 1] = P.y + l[1]; pos[j * 3 + 2] = P.z - l[0] * sn + l[2] * c; });
     pts.geometry.attributes.position.needsUpdate = true;
   }
 
@@ -2428,6 +2500,7 @@ void main() {
     const houses = tally('njFlats', () => genHouses(rnd));
     genWoods(rnd);
     genForecourt(rnd);
+    genAir(rnd);
     const M = new Mesher([['aData', 4], ['aExtra', 4]]);
     genLandmarks(M, rnd);
     const steel = new Mesher([['aKind', 1], ['aUV', 2]]);
@@ -2517,6 +2590,7 @@ void main() {
     lights.frustumCulled = false;
     g.add(lights);
     buildBoats(g, cityMat, mat);
+    buildHeli(g, cityMat, mat);
 
     SKY.cityMat = cityMat;
     SKY.groundMat = ground.material;
@@ -2525,7 +2599,7 @@ void main() {
     return g;
   }
 
-  return { GEO, toW, toSC, llToSC, landY, cMan, cJer, cCliff, isWater, season, litAt, build, updateBoats, BOATS };
+  return { GEO, toW, toSC, llToSC, landY, cMan, cJer, cCliff, isWater, season, litAt, build, updateBoats, BOATS, HELI, heliPose };
 })();
 
 /* ---------- build ---------- */

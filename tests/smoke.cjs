@@ -75,22 +75,46 @@ server.listen(0, '127.0.0.1', async () => {
     });
     check(ext.terrace, 'the roof terrace is built with its planting');
     check(ext.boats >= 3 && ext.moved, 'vessels run the river');
+    // 3 · round three: going through what needs you, next agent, screens in the address bar, ripples, the away card
+    await page.evaluate(() => { requestApproval('builder', 'Publish the TEST landing page', { simulated: true }); setAgentStatus('builder', 'WAITING', { detail: 'TEST' }); });
+    check(await page.evaluate(() => RIPPLE.pool.some(p => p.t < 1)), 'a new decision runs one ripple out from the agent');
+    await page.evaluate(() => document.getElementById('stage').querySelector('canvas').focus());
+    await page.keyboard.press('a');
+    await page.waitForTimeout(1200);
+    const tour = await page.evaluate(() => ({ sel: window.__office.UI.selected, chip: document.getElementById('tourChip')?.textContent || '', hidden: document.getElementById('tourChip')?.hidden }));
+    check(tour.sel === 'builder' && !tour.hidden && /^1 of \d/.test(tour.chip) && tour.chip.includes('Publish the TEST landing page'), 'A goes to the first thing that needs you, with its place in the list');
+    await page.keyboard.press(']');
+    await page.waitForTimeout(1200);
+    const nxt = await page.evaluate(() => ({ sel: window.__office.UI.selected, want: OFFICE_STATE.order[OFFICE_STATE.order.indexOf('builder') + 1], hash: location.hash, chip: document.getElementById('tourChip')?.hidden }));
+    check(nxt.sel === nxt.want && nxt.hash === '#agent/' + nxt.sel, '] opens the next agent and the address follows');
+    check(nxt.chip === true, 'leaving the item ends the walk-through chip');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => window.__office.UI.openScreen('today'));
+    await page.waitForTimeout(500);
+    const scr = await page.evaluate(() => location.hash);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(800);
+    check(scr === '#screen/today' && await page.evaluate(() => !location.hash.startsWith('#screen/')), 'an open screen is in the address bar until it closes');
+    check(await page.evaluate(() => { AWAY.check(Date.now() - 3600e3); const el = document.getElementById('awayCard'); return !el || el.hidden; }), 'the away card claims nothing from before the page opened');
+    const heli = await page.evaluate(async () => { const a = CITY.HELI.mesh.instanceMatrix.array[12], f0 = OFFICE_RUNTIME.frames; for (let i = 0; i < 120 && OFFICE_RUNTIME.frames < f0 + 4; i++) await new Promise(r => setTimeout(r, 500)); return CITY.HELI.mesh.instanceMatrix.array[12] !== a; });
+    check(heli, 'the helicopter works the river');
     check(errors.length === 0, `no console errors or failed requests${errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''}`);
     await page.close();
 
-    // 3 · deep link to an agent
+    // 4 · deep link to an agent
     const deep = await open(browser, base + '#agent/analyst');
     await deep.page.waitForTimeout(1500);
     check(await deep.page.evaluate(() => window.__office.UI.selected === 'analyst'), '#agent/analyst opens the Analyst on load');
     await deep.page.close();
 
-    // 4 · reduced motion: the river holds still
+    // 5 · reduced motion: the river holds still
     const rm = await open(browser, base, { reducedMotion: 'reduce' });
     const still = await rm.page.evaluate(async () => { const a = CITY.BOATS.mesh.instanceMatrix.array[12]; await new Promise(r => setTimeout(r, 2000)); return CITY.BOATS.mesh.instanceMatrix.array[12] === a; });
     check(still, 'reduced motion holds the vessels still');
     await rm.page.close();
 
-    // 5 · phone: the crew rail is a strip along the bottom and the room keeps the full width
+    // 6 · phone: the crew rail is a strip along the bottom and the room keeps the full width
     const ph = await open(browser, base, { viewport: { width: 390, height: 844 } });
     const strip = await ph.page.evaluate(() => { const r = document.getElementById('roster').getBoundingClientRect(); return { w: r.width, bottom: innerHeight - r.bottom, ox: window.__office.controls.viewOffsetX }; });
     check(strip.w > 300 && strip.bottom < 80 && Math.abs(strip.ox) < 1, 'phone: the crew strip runs along the bottom, the room is centred');
