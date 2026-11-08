@@ -1173,8 +1173,8 @@ function buildTickerStrip() {
         runs.push([it.label.toUpperCase(), 0.34, '#a7abb2', 600, 0.1]);
         runs.push([it.value, 0.6, '#ffffff', 600, 0]);
         if (it.move) runs.push([it.move, 0.42, it.dir > 0 ? BRAND.crimson : it.dir < 0 ? '#c9ced6' : '#8d9198', 600, 0]);
-        if (it.asOf) runs.push([it.asOf, 0.3, '#6c7076', 500, 0.04]);
-        if (T.sample) runs.push(['TEST', 0.3, '#8d9198', 600, 0.05]);
+        if (it.asOf && !T.sample) runs.push([it.asOf, 0.3, '#6c7076', 500, 0.04]);
+        if (T.sample) runs.push(['TEST', 0.3, '#8d9198', 600, 0.05]); // once: the sample's date is the word TEST
         else if (it.stale || OFFICE_STATE.ticker.status !== 'live') runs.push(['STALE',0.34,BRAND.crimson,700,0.05]);
         parts.push({ runs });
       } else parts.push({ runs: [[it.text, 0.5, '#e8eaee', 500, 0]] });
