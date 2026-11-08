@@ -9,7 +9,20 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 /** Frame-rate independent exponential smoothing toward a target. */
 const damp = (a, b, lambda, dt) => lerp(a, b, 1 - Math.exp(-lambda * dt));
-const easeInOut = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+/**
+ * A critically damped spring, solved exactly for any dt (so a slow frame never overshoots or blows up): the value
+ * eases out of rest and into its target with no jump in speed, the way a limb moves. S = { x, v }; w is its rate
+ * (about twice an exponential smoothing rate gives the same settling time). Returns S.x.
+ */
+function springStep(S, goal, w, dt) {
+  const d = S.x - goal, e = Math.exp(-w * dt), j = S.v + w * d;
+  S.x = goal + (d + j * dt) * e;
+  S.v = (S.v - w * j * dt) * e;
+  return S.x;
+}
+/** Minimum-jerk ease (quintic): zero speed and zero acceleration at both ends. */
+const minJerk = t => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * t * (10 + t * (6 * t - 15)));
+const easeInOut = t =>(t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const easeOut = t => 1 - Math.pow(1 - t, 3);
 const smooth = (a, b, x) => {
   const t = clamp((x - a) / (b - a), 0, 1);

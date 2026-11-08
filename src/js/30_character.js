@@ -44,6 +44,10 @@ const STANDING = {
   ...SEATED, hipY: DIM.standHipY, lean: 0, hipLx: 0, hipRx: 0, kneeLx: 0.02, kneeRx: 0.02, hipLz: 0.035, hipRz: -0.035,
   shLx: 0.03, shLz: 0.075, elLx: -0.14, wrLx: 0, fingL: 0.3, prL: 1, shRx: 0.03, shRz: -0.075, elRx: -0.14, wrRx: 0, fingR: 0.3, prR: 1,
 };
+/** The top speed of each pose value (rad/s; m/s for hipY, rootZ, footZ) outside walking and the quick choreography. */
+const JOINT_VMAX = Object.fromEntries(POSE_KEYS.map(k => [k,
+  /^sh/.test(k) ? 1.9 : /^el/.test(k) ? 2.4 : /^wr/.test(k) ? 3 : /^pr/.test(k) ? 3 : /^fing/.test(k) ? 5 : /^head/.test(k) ? 2.2
+  : /^hip[LR]/.test(k) ? 2.4 : /^knee/.test(k) ? 2.8 : k === 'lean' ? 1.4 : k === 'twist' ? 1.4 : k === 'hipY' ? 0.9 : k === 'rootZ' ? 0.7 : k === 'footZ' ? 0.9 : 3]));
 /** Modes in which the figure sits: the legs are solved onto the floor every frame. */
 const SEATED_MODES = new Set(['type', 'browse', 'think', 'idle', 'done', 'paused', 'sofa', 'watch', 'review', 'meet']);
 
@@ -1296,6 +1300,8 @@ function mapKeys(keys) {
 /* ---------- the figure ------------------------------------------------------------ */
 
 const KAPPA = 0.72; // a finger's end joint follows its middle joint
+const TYPE_WRIST = { y: 0.078, z: 0.11 }; // typing: the wrist above and behind the centre of its home keys
+const HAND_OUT = { L: 0.026, R: 0.037 }; // typing: the wrist's offset outward from the centre of its home keys (measured: each hand's four fingers then sit square over F D S A and J K L ;)
 
 class Figure {
   /**
@@ -1544,6 +1550,8 @@ class Figure {
 
     this.pose = { ...SEATED };
     this.goal = { ...SEATED };
+    this.poseV = Object.fromEntries(POSE_KEYS.map(k => [k, 0])); // each joint's speed: the pose eases on springs, never in jumps
+    this._sp = { x: 0, v: 0 };
     this.mode = 'type';
     this.modeT = 0;
     this.phase = Math.random() * 100;
@@ -1796,6 +1804,7 @@ class Figure {
     const up = m => ['stand', 'wave', 'look', 'lift', 'slam', 'upset'].includes(m);
     const big = moving(this.mode) !== moving(mode) || up(mode) !== up(this.mode);
     this.lambda = big ? 6 : 8;
+    this._modeFrom = this.mode;
     this.mode = mode;
     this.modeT = 0;
   }
@@ -1964,13 +1973,14 @@ class Figure {
         : m === 'idle' || m === 'done' || m === 'paused' ? ['stretch', 'look', 'swivel', 'lean']
         : m === 'stand' || m === 'look' ? ['look', 'shoulders']
         : ['look', 'lean', 'nod'];
-      this.act = { kind: pick(opts), t: 0, dur: rand(1.8, 3.4), dir: Math.random() < 0.5 ? -1 : 1 };
+      const kind = pick(opts);
+      this.act = { kind, t: 0, dur: kind === 'stretch' ? rand(3.6, 4.6) : rand(1.8, 3.4), dir: Math.random() < 0.5 ? -1 : 1 };
       this._actIn = rand(6, 14);
     }
     const a = this.act;
     if (!a) return;
     a.t += dt;
-    const k = Math.sin(clamp(a.t / a.dur, 0, 1) * Math.PI);
+    const k = Math.sin(clamp(a.t / a.dur, 0, 1) * Math.PI) ** 2; // (squared: the habit starts and ends at rest, no kick)
     switch (a.kind) {
       case 'lean': g.lean -= 0.1 * k; g.headPitch -= 0.06 * k; break;
       case 'look': g.headYaw += a.dir * 0.6 * k; g.headPitch -= 0.05 * k; g.twist += a.dir * 0.06 * k; break;
@@ -1980,15 +1990,19 @@ class Figure {
       case 'stretch':
         if (!typing && SEATED_MODES.has(this.mode)) {
           // arms up in a wide V: the hands go above the head and out past its sides (and any headwear), so no part
-          // of the arm passes through it on the way up or down
+          // of the arm passes through it on the way up or down. 9.2: they come up close in front of the chest first
+          // (out of the lap, clear of the desk's edge) and only then rise, and come down the same way
           g.lean -= 0.12 * k; g.headPitch -= 0.14 * k;
           const B = this.headBox, cz = (B.min.z + B.max.z) / 2 - 0.02;
+          const k1 = smooth(0, 0.45, k), k2 = smooth(0.3, 1, k);
           for (const side of [1, -1]) {
             const x = side * (Math.max(side > 0 ? B.max.x : -B.min.x, this.shoulderX) + 0.13);
-            const s = this.solveArm(side, this._headToRoot(g, x, B.max.y + 0.14, cz, this._t2, 0), g, 0.05);
+            const top = this._headToRoot(g, x, B.max.y + 0.14, cz, this._t2, 0);
+            const chest = this._t1.set(side * (this.shoulderX + 0.02), g.hipY + this.shoulderY - 0.12, 0.2);
+            const s = this.solveArm(side, chest.lerp(top, k2), g, 0.05);
             const K = side > 0 ? ['shLx', 'shLz', 'elLx', 'wrLx', 'prL', 'fingL'] : ['shRx', 'shRz', 'elRx', 'wrRx', 'prR', 'fingR'];
-            g[K[0]] = lerp(g[K[0]], s.sx, k); g[K[1]] = lerp(g[K[1]], s.sz, k); g[K[2]] = lerp(g[K[2]], s.el, k);
-            g[K[3]] = lerp(g[K[3]], 0.1, k); g[K[4]] = lerp(g[K[4]], 1, k); g[K[5]] = lerp(g[K[5]], 0.12, k);
+            g[K[0]] = lerp(g[K[0]], s.sx, k1); g[K[1]] = lerp(g[K[1]], s.sz, k1); g[K[2]] = lerp(g[K[2]], s.el, k1);
+            g[K[3]] = lerp(g[K[3]], lerp(-0.3, 0.1, k2), k1); g[K[4]] = lerp(g[K[4]], lerp(0.6, 1, k2), k1); g[K[5]] = lerp(g[K[5]], 0.12, k1);
           }
         }
         break;
@@ -2093,7 +2107,8 @@ class Figure {
         time: 0, next: 0.35, word: '', wi: 0, burst: 3, prevHand: null, prevKey: null, ready: false,
         fing: { L: [null, null, null, null], R: [null, null, null, null] }, thumbS: { L: null, R: null }, thumb: { L: 0, R: 0 },
         goal: { L: [V(), V(), V(), V()], R: [V(), V(), V(), V()] }, fw: { L: [1, 1, 1, 1], R: [1, 1, 1, 1] },
-        drift: { L: V(), R: V() }, driftT: { L: V(), R: V() }, homeC: { L: V(), R: V() }, pad: null, padK: 0, padNext: rand(10, 24),
+        drift: { L: V(), R: V() }, driftV: { L: V(), R: V() }, driftT: { L: V(), R: V() }, homeC: { L: V(), R: V() }, pad: null, padK: 0, padNext: rand(10, 24), dt: 1 / 30,
+        tip: { L: [0, 1, 2, 3].map(() => ({ p: V(), v: V(), has: false })), R: [0, 1, 2, 3].map(() => ({ p: V(), v: V(), has: false })) },
       };
     }
     const key = src || D.kb;
@@ -2130,10 +2145,18 @@ class Figure {
         T.wi = 0;
       }
       if (T.wi < T.word.length) {
-        const ch = T.word[T.wi++].toUpperCase();
+        const ch = T.word[T.wi].toUpperCase();
         const fin = FINGER_OF[ch] || ['R', 0];
+        // a finger still on its way back from the last key finishes first (9.2: the new stroke used to restart it from
+        // its home key mid-move, a visible snap on every double letter and same-finger pair)
+        const busy = T.fing[fin[0]][fin[1]];
+        if (busy) {
+          const left = busy.dur * 0.72 - (T.time - busy.t0);
+          if (left > 0) { T.next = T.time + left; continue; }
+        }
+        T.wi++;
         this._stroke(T, ch, fin);
-        let gap = 0.1 + Math.random() * 0.08;
+        let gap = 0.115 + Math.random() * 0.085;
         if (T.prevHand === fin[0]) gap += 0.035;
         if (T.prevKey === ch) gap += 0.05;
         T.prevHand = fin[0];
@@ -2162,11 +2185,17 @@ class Figure {
     const [H, f] = fin;
     const idx = ch === ' ' ? T.space : T.map[ch];
     if (idx == null) return;
-    if (f === 4) T.thumbS[H] = { key: idx, t0: T.time, dur: 0.15, pressed: false };
-    else T.fing[H][f] = { key: idx, t0: T.time, dur: 0.15 + Math.random() * 0.05, pressed: false };
+    if (f === 4) T.thumbS[H] = { key: idx, t0: T.time, dur: 0.2, pressed: false };
+    else {
+      // from wherever the fingertip is now (its home key, or still on its way back from the last one)
+      const at = T.tip[H][f];
+      T.fing[H][f] = { key: idx, t0: T.time, dur: 0.2 + Math.random() * 0.06, pressed: false, from: at.has ? at.p.clone() : null };
+    }
   }
 
-  /** A fingertip's target (root frame) this frame: resting on its home key, or on its way to, into and back from a key. */
+  /** A fingertip's target (root frame) this frame: resting on its home key, or on its way to, into and back from a key.
+   *  9.2: one continuous, minimum-jerk path from where the tip actually is (never a restart from home), a lift and
+   *  an arc over the caps on the way, a press that follows the cap down and a short dwell, then an easy return. */
   _tipGoal(T, H, i, drift) {
     const home = T.keys[T.home[H][i]];
     const v = this._t2.set(home.x, home.y + 0.0046, home.z - 0.0035); // resting on the cap (the tip's pad is ~3.6 mm under its point)
@@ -2177,30 +2206,35 @@ class Figure {
       else {
         const K = T.keys[st.key];
         const tx = K.x, ty = K.y, tz = K.z - 0.002;
+        const f0 = st.from || v; // where the stroke began
         let x, y, z, e;
-        if (u < 0.38) {
-          e = smooth(0, 1, u / 0.38);
-          x = lerp(v.x, tx, e); z = lerp(v.z, tz, e);
-          y = lerp(v.y, ty + 0.008, e) + Math.sin(e * Math.PI) * 0.007;
-        } else if (u < 0.56) {
-          e = (u - 0.38) / 0.18;
-          x = tx; z = tz; y = ty + lerp(0.008, 0.003, e * e); // down with the cap through its travel, never into it
-        } else if (u < 0.64) {
-          x = tx; z = tz; y = ty + 0.003;
+        if (u < 0.42) {
+          // out and over: the tip lifts as it leaves, arcs over the caps, and arrives just above the key
+          e = minJerk(u / 0.42);
+          const hop = Math.min(0.009, 0.004 + Math.hypot(tx - f0.x, tz - f0.z) * 0.12);
+          x = lerp(f0.x, tx, e); z = lerp(f0.z, tz, e);
+          y = lerp(f0.y, ty + 0.0075, e) + Math.sin(e * Math.PI) * hop;
+        } else if (u < 0.6) {
+          // the press: down with the cap through its travel (never into it)
+          e = minJerk((u - 0.42) / 0.18);
+          x = tx; z = tz; y = ty + lerp(0.0075, 0.003, e);
+        } else if (u < 0.68) {
+          x = tx; z = tz; y = ty + 0.003; // a beat on the bottomed key
         } else {
-          e = smooth(0, 1, (u - 0.64) / 0.36);
+          // the release and the way home, the cap pushing the tip up first
+          e = minJerk((u - 0.68) / 0.32);
           x = lerp(tx, v.x, e); z = lerp(tz, v.z, e);
-          y = lerp(ty + 0.003, v.y, e) + Math.sin(e * Math.PI) * 0.006;
+          y = lerp(ty + 0.003, v.y, e) + Math.sin(e * Math.PI) * 0.005;
         }
-        if (!st.pressed && u >= 0.5) {
+        if (!st.pressed && u >= 0.52) {
           st.pressed = true;
           if (T.press) T.press(st.key);
           this.strikeT[H] = 0.09;
         }
-        const env = Math.sin(clamp(u, 0, 1) * Math.PI);
-        drift.x += (K.x - home.x) * 0.3 * env;
-        drift.z += (K.z - home.z) * 0.3 * env;
-        drift.y += 0.0025 * env;
+        const env = Math.sin(clamp(u, 0, 1) * Math.PI) ** 2;
+        drift.x += (K.x - home.x) * 0.32 * env;
+        drift.z += (K.z - home.z) * 0.32 * env;
+        drift.y += 0.0022 * env;
         v.set(x, y, z);
       }
     }
@@ -2211,7 +2245,14 @@ class Figure {
       v.lerp(this._t1.set(pd.x + Math.sin(T.time * 1.6 + ph) * 0.013 - 0.0185 * i, pd.y + lift, pd.z - 0.006 - 0.005 * i + Math.cos(T.time * 1.15 + ph) * 0.01), T.padK);
     }
     T.fw[H][i] = 1;
-    this._toRoot(v, T.goal[H][i]);
+    // a fast spring takes out what is left of any corner (a stroke cut short, the trackpad blend) without lag you can see
+    const tp = T.tip[H][i];
+    if (!tp.has) { tp.p.copy(v); tp.v.set(0, 0, 0); tp.has = true; }
+    else {
+      const S = this._sp, w = 55, dt = T.dt;
+      for (const c of ['x', 'y', 'z']) { S.x = tp.p[c]; S.v = tp.v[c]; tp.p[c] = springStep(S, v[c], w, dt); tp.v[c] = S.v; }
+    }
+    this._toRoot(tp.p, T.goal[H][i]);
   }
 
   _thumbGoal(T, H) {
@@ -2237,6 +2278,7 @@ class Figure {
     const T = this._typist();
     if (!T) return false;
     T.time += dt;
+    T.dt = dt;
     const browse = this.mode === 'browse';
     this._schedule(T, browse);
     let padK = 0;
@@ -2251,11 +2293,12 @@ class Figure {
       const drift = T.driftT[H].set(0, 0, 0);
       for (let i = 0; i < 4; i++) this._tipGoal(T, H, i, drift);
       this._thumbGoal(T, H);
-      T.drift[H].lerp(drift, 1 - Math.exp(-16 * dt));
+      // the hand follows its fingers on a softer spring: it leans toward the key, it does not jump to it
+      for (const c of ['x', 'y', 'z']) { const S = this._sp; S.x = T.drift[H][c]; S.v = T.driftV[H][c]; T.drift[H][c] = springStep(S, drift[c], 22, dt); T.driftV[H][c] = S.v; }
       const a = this._v.copy(T.homeC[H]).add(T.drift[H]);
-      a.x += side * 0.006;
-      a.y += 0.058;
-      a.z -= 0.12;
+      a.x += side * HAND_OUT[H]; // the hand over its own four keys (9.2: it sat ~3 cm in, every finger splayed to its limit)
+      a.y += TYPE_WRIST.y;
+      a.z -= TYPE_WRIST.z;
       if (H === 'R' && padK > 0.001) {
         const pd = this.desk.pad, ph = T.pad ? T.pad.ph : 0;
         a.lerp(this._w.set(pd.x - 0.004 + Math.sin(T.time * 1.6 + ph) * 0.01, pd.y + 0.05, pd.z - 0.112 + Math.cos(T.time * 1.15 + ph) * 0.008), padK);
@@ -2318,7 +2361,8 @@ class Figure {
         F.dip.rotation.x = d;
       }
       const tp = useIK ? T.thumb[H] * tk : 0, tr = useIK ? tk : 0;
-      const trx = lerp(0.25 + c * 0.35, 0.05, tr) + tp * 0.5, trz = -arm.side * (0.62 + 0.35 * sp - tp * 0.12), tip = lerp(c * 0.6, 0.12, tr) + tp * 0.45;
+      // (typing, the thumbs swing in less and hang over the space bar, rather than reaching across to meet each other)
+      const trx = lerp(0.25 + c * 0.35, 0.28, tr) + tp * 0.4, trz = -arm.side * (lerp(0.62, 0.34, tr) + 0.35 * sp - tp * 0.1), tip = lerp(c * 0.6, 0.3, tr) + tp * 0.4;
       arm.thumb.rotation.set(trx, 0, trz);
       arm.thumbIP.rotation.x = tip;
       if (this._deskF) this._thumbClear(arm, trx, trz, tip);
@@ -2431,8 +2475,14 @@ class Figure {
     this._pinv.copy(parent.matrixWorld).invert();
     const p = this.pose, LK = this.LK || 1, Q = this._gq, inv = this._pinv;
     const loose = (this.typK || 0) < 0.5; // fingers not on keys: they count too
+    const G = this._gd || (this._gd = { 1: { R: new THREE.Vector3(), dir: null, W0: new THREE.Vector3() }, '-1': { R: new THREE.Vector3(), dir: null, W0: new THREE.Vector3() } });
+    const relK = Math.exp(-12 * this._gdt);
     let moved = 0;
     for (const arm of [this.armL, this.armR]) {
+      const A = G[arm.side], L = arm.side > 0;
+      const keep = L ? p.shLx + p.elLx + p.wrLx : p.shRx + p.elRx + p.wrRx; // the hand keeps its pitch
+      arm.wr.getWorldPosition(A.W0).applyMatrix4(inv);
+      let T = null, chose = null;
       for (let iter = 0; iter < 4; iter++) {
         const E = arm.el.getWorldPosition(Q[0]).applyMatrix4(inv);
         const W = arm.wr.getWorldPosition(Q[1]).applyMatrix4(inv);
@@ -2449,7 +2499,9 @@ class Figure {
         const FS = [];
         // the palm's four corners (a rolled hand drops one edge well below its centre)
         for (const cx of [-0.45, 0.45]) for (const cy of [-0.022, -HAND.palmL + 0.012]) FS.push([Q[5].set(cx * HAND.palmW, cy, 0).applyMatrix4(arm.tw.matrixWorld).applyMatrix4(inv).clone(), 0.0125, 1.2]);
-        for (const Fi of arm.f) {
+        // (typing, the fingers are solved onto their keys after this and each is kept clear of the caps there: checking
+        // last frame's fingers against this frame's wrist lifted the hand one frame and dropped it the next)
+        if (loose) for (const Fi of arm.f) {
           const a = Fi.mcp.rotation.x, b = Fi.pip.rotation.x, d = Fi.dip.rotation.x, phi = Fi.mcp.rotation.z;
           FS.push([this._tipAt(arm, Fi, a, b, d, phi, new THREE.Vector3(), 1), 0.0085, 1.35]);
           FS.push([this._tipAt(arm, Fi, a, b, d, phi, new THREE.Vector3(), 2), 0.0075, 1.45]);
@@ -2475,25 +2527,50 @@ class Figure {
           back = Math.max(back, q.z - (F.z - r));
         }
         if (!any) break;
-        // the least move: over the top, back in front of the edge, or (a hand low at the edge) down under it
-        const T = this._t1.copy(W);
+        // the least move: over the top, back in front of the edge, or (a hand low at the edge) down under it. The way
+        // chosen last frame is kept unless another is clearly shorter (9.2: the choice flipped between frames and the
+        // hand jittered between two places, the right hand at the keys most of all)
+        T = this._t1.copy(W);
         const cBack = back * 1.15, cDown = downOK ? down * 1.25 : Infinity;
-        if (iter >= 2 || (cBack <= up && cBack <= cDown)) T.z -= back + 0.005; // (lifting did not reach: draw back)
-        else if (cDown < up) T.y -= down + 0.005;
+        const cost = { back: cBack, down: cDown, up };
+        let dir = iter >= 2 ? 'back' : cBack <= up && cBack <= cDown ? 'back' : cDown < up ? 'down' : 'up'; // (lifting did not reach: draw back)
+        if (iter < 2 && A.dir && A.dir !== dir && cost[A.dir] < cost[dir] * 1.6 + 0.004) dir = A.dir;
+        if ((A.dir === 'up' && dir === 'down') || (A.dir === 'down' && dir === 'up')) dir = 'back'; // round the edge, not through it
+        chose = chose || dir;
+        if (dir === 'back') T.z -= back + 0.005;
+        else if (dir === 'down') T.y -= down + 0.005;
         else T.y += up + 0.005;
-        const L = arm.side > 0;
-        const keep = L ? p.shLx + p.elLx + p.wrLx : p.shRx + p.elRx + p.wrRx; // the hand keeps its pitch
-        const s = this.solveArm(arm.side, this._toRoot(T, this._t2), p);
-        if (L) { p.shLx = s.sx; p.shLy = 0; p.shLz = s.sz; p.elLx = s.el; p.wrLx = keep - s.sx - s.el; }
-        else { p.shRx = s.sx; p.shRy = 0; p.shRz = s.sz; p.elRx = s.el; p.wrRx = keep - s.sx - s.el; }
-        arm.sh.rotation.set(s.sx, 0, s.sz);
-        arm.el.rotation.x = s.el;
-        arm.wr.rotation.x = keep - s.sx - s.el;
-        arm.sh.updateMatrixWorld(true);
+        this._guardSolve(arm, T, p, keep);
         moved++;
       }
+      // the correction never feeds back into the pose (that loop made it oscillate); as the need for it passes, the
+      // hand eases back rather than dropping in one frame. The eased remainder only ever lifts the hand or draws it
+      // toward the body, so it never puts the hand into the desk.
+      const full = A.R;
+      if (T) full.subVectors(T, A.W0); else full.set(0, 0, 0);
+      const held = A.held || (A.held = new THREE.Vector3()); // last frame's correction
+      const out = this._t1.copy(full);
+      // what is left of last frame's lift or draw-back eases away (only ever up, or toward the body)
+      const rest = this._t2.copy(held).multiplyScalar(relK);
+      if (A.dir !== 'down' && chose !== 'down' && rest.y > out.y && out.y >= 0) out.y = rest.y;
+      if (rest.z < out.z && out.z <= 0) out.z = rest.z;
+      // and the correction itself changes no faster than a hand moves (a big one arriving at once, or a change of
+      // way round the edge, is a few frames' move instead of a jump)
+      const step = this._v.subVectors(out, held), lim = (step.dot(held) >= 0 ? 3.2 : 1.6) * this._gdt; // (growing: quicker, so it never trails into the desk; turning: gentler)
+      if (step.length() > lim) out.copy(held).add(step.setLength(lim));
+      held.copy(out);
+      if (chose) A.dir = chose; else if (held.lengthSq() < 1e-6) A.dir = null;
+      if (out.distanceToSquared(full) > 1e-8) this._guardSolve(arm, this._w.copy(out).add(A.W0), p, keep);
     }
     this.guardMoves = moved;
+  }
+  /** The desk guard's arm: the wrist to T (desk frame), the hand keeping its pitch; written to the bones only. */
+  _guardSolve(arm, T, p, keep) {
+    const s = this.solveArm(arm.side, this._toRoot(T, this._t2), p);
+    arm.sh.rotation.set(s.sx, 0, s.sz);
+    arm.el.rotation.x = s.el;
+    arm.wr.rotation.x = keep - s.sx - s.el;
+    arm.sh.updateMatrixWorld(true);
   }
 
   /* ----- push and pull ----- */
@@ -2575,7 +2652,20 @@ class Figure {
     const settled = (!legs || this.pose.hipY < DIM.sitHipY + 0.06) && Math.abs(this.root.position.z) < 0.06;
     const typing = wantType && settled && H.k < 0.45 && P.mag < 0.04 && !this.grabS && !this.reachS[1]?.target && !this.reachS[-1]?.target;
     if (atHome && !typing && (mode === 'idle' || mode === 'paused' || mode === 'type' || mode === 'browse')) this._lapHands(g); // (typing set aside: hovered, pushed)
+    if (atHome && mode === 'think') {
+      // the left forearm across the lap, its hand on the far thigh and clear of the desk's edge (9.2: the posed angles
+      // left that hand under the edge, so it was pushed out of the desk every time the robot sat back to think)
+      const s = this.solveArm(1, this._t2.set(-0.03, g.hipY + (this.base === 'legs' ? 0.09 : 0.065), 0.12), g);
+      g.shLx = s.sx; g.shLz = s.sz; g.elLx = s.el; g.wrLx = clamp(-1.1 - g.lean - s.sx - s.el, -1.3, 0.6); g.prL = 0.5; g.fingL = 0.45;
+    }
     this.habits(g, dt, typing);
+    // changing what it does at the desk (keys, lap, chin, behind the head), the forearms fold up and in for a moment,
+    // so the hands travel above and behind the desk's edge rather than through it, the way a person draws them back
+    if (atHome && seated && this.modeT < 0.8 && this._modeFrom && SEATED_MODES.has(this._modeFrom)) {
+      const env = Math.sin(Math.PI * clamp(this.modeT / 0.8, 0, 1)) ** 2;
+      g.elLx -= 0.6 * env; g.elRx -= 0.6 * env;
+      g.shLx -= 0.12 * env; g.shRx -= 0.12 * env;
+    }
     if (atHome && seated) {
       g.lean = Math.max(g.lean, legs ? -0.12 : -0.16); // the chair's back is right there
       if (legs) g.footZ = Math.min(g.footZ, 0.48);
@@ -2667,7 +2757,26 @@ class Figure {
     // ease toward the goal: quick for the hands on keys, the spike, a reach; calmer otherwise
     const fast = this.reachK[1] > 0.02 || this.reachK[-1] > 0.02 || Math.abs(this.bendK - this.bendT) > 0.02 || Math.abs(this.bendK) > 0.05 || this.recoilT > 0;
     const L = fast ? 26 : mode === 'run' ? 18 : fiveL || fiveR ? 20 : moving ? 14 : mode === 'slam' ? 22 : typing ? 18 : this.lambda;
-    for (const k of POSE_KEYS) this.pose[k] = damp(this.pose[k], g[k], k.startsWith('head') && !fast ? 7 : fast && (k === 'lean' || k === 'hipY' || k === 'rootZ') ? 40 : L, dt);
+    // every joint rides a critically damped spring (9.2): it gathers speed and settles like a limb, where the old
+    // exponential ease started each move at full speed and stopped it dead (seen up close as a jerk at every change
+    // of pose, habit or target). Rates are the old ones ×1.8, which settle in about the same time.
+    // Away from walking and the quick choreography, each joint also has a top speed a person's would have, so a
+    // big change of pose (hands from behind the head to the keys, from the lap up into a stretch) takes most of a
+    // second instead of a tenth: the old ease covered half of it in the first frame.
+    const S = this._sp, PV = this.poseV, cap = !moving && !fast && mode !== 'run' && mode !== 'slam' && dt > 0;
+    for (const k of POSE_KEYS) {
+      const lam = k.startsWith('head') && !fast ? 7 : fast && (k === 'lean' || k === 'hipY' || k === 'rootZ') ? 40 : L;
+      const x0 = this.pose[k];
+      S.x = x0; S.v = PV[k];
+      let x = springStep(S, g[k], lam * 1.8, dt);
+      if (cap) {
+        const vm = JOINT_VMAX[k];
+        if (Math.abs(S.v) > vm) S.v = Math.sign(S.v) * vm;
+        if (Math.abs(x - x0) > vm * dt) x = x0 + Math.sign(x - x0) * vm * dt;
+      }
+      this.pose[k] = x;
+      PV[k] = S.v;
+    }
     const p = this.pose;
     if (REDUCED_MOTION && this._officeStaticPose) for(const key of ['headYaw','headPitch','shLx','shLy','shLz','elLx','wrLx','prL','fingL'])p[key]=g[key];
     this.hips.position.y = p.hipY;
@@ -2695,6 +2804,7 @@ class Figure {
     }
     if (this.grabS) {
       this._grabStep(dt);
+      for (const k of POSE_KEYS) this.poseV[k] = 0; // a held limb goes where the hand puts it, and drops no stored speed on release
       const q = this.pose;
       this.head.rotation.set(q.headPitch, q.headYaw, q.headRoll, 'YXZ');
       for (const [arm, sx, sy, sz, el, wr] of [[this.armL, q.shLx, q.shLy, q.shLz, q.elLx, q.wrLx], [this.armR, q.shRx, q.shRy, q.shRz, q.elRx, q.wrRx]]) {
@@ -2711,6 +2821,7 @@ class Figure {
         this.legR.an.rotation.x = -(q.hipRx + q.kneeRx);
       }
     }
+    this._gdt = dt;
     this._deskGuard();
     this._hands(t);
     this._baseAnim(t, dt);
@@ -2734,7 +2845,7 @@ class Figure {
   _lapHands(g) {
     const legs = this.base === 'legs';
     for (const side of [1, -1]) {
-      const T = this._t2.set(side * (this.shoulderX - 0.07), g.hipY + (legs ? 0.088 : 0.06), legs ? 0.155 : 0.12);
+      const T = this._t2.set(side * (this.shoulderX - 0.07), g.hipY + (legs ? 0.088 : 0.06), legs ? 0.118 : 0.1); // (9.2: 4 cm further back, so the fingertips clear the desk's edge when the hands come up)
       const s = this.solveArm(side, T, g);
       const K = side > 0 ? ['shLx', 'shLz', 'elLx', 'wrLx', 'prL', 'fingL'] : ['shRx', 'shRz', 'elRx', 'wrRx', 'prR', 'fingR'];
       // the hand lies along the thigh (pointing forward, a little down); without thighs it hangs a little lower
