@@ -147,11 +147,11 @@ const VIEW = {
     this.initScreens();
     BUS.on('agent', a => {
       this.sync(a.id);
-      this.dirty('main');
+      this.dirty('main', 'study');
       this.rackDirty = true;
     });
     BUS.on('approval', ev => {
-      this.dirty('main');
+      this.dirty('main', 'study');
       if (ev && ev.type === 'request') {
         LIFE.gateFlash = performance.now(); // a gate arriving lights the "Needs you" block
         lifePing('main');
@@ -276,7 +276,10 @@ const VIEW = {
       const c = makeCanvas(W, H);
       const tex = canvasTexture(c);
       tex.minFilter = THREE.LinearMipmapLinearFilter;
-      obj.face.material = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+      // the study's board is a transparent LED glass: read from the room, seen through from the floor cameras behind it
+      obj.face.material = key === 'study'
+        ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, transparent: true, opacity: 0.86, side: THREE.DoubleSide, depthWrite: false })
+        : new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
       const ctx = c.getContext('2d');
       this.screens[key] = {
         key, canvas: c, ctx, tex, W, H, face: obj.face, last: 0, dirty: true,
@@ -896,27 +899,33 @@ function drawNeeds(ctx, W, H, detail) {
 function drawStudyBoard(ctx, W, H, detail) {
   hitReset('study');
   const M = 72;
-  const live = OFFICE_STATE.meta.feed === 'live';
+  const feed = OFFICE_STATE.meta.feed, sample = feed === 'simulated';
   const pf = OFFICE_STATE.meta.bridge && OFFICE_STATE.meta.bridge.feeds && OFFICE_STATE.meta.bridge.feeds.personal;
   const ids = OFFICE_STATE.order.filter(id => OFFICE_STATE.agents[id].zone === 'personal');
   const mine = t => ids.includes(t.agentId);
   const tasks = OFFICE_STATE.tasks.filter(mine);
-  const open = tasks.filter(t => t.column !== 'done'), done = tasks.filter(t => t.column === 'done');
+  const open = tasks.filter(t => t.column !== 'done');
+  const day = etDay();
+  const doneToday = ids.reduce((n, id) => n + (OFFICE_STATE.stats.finishedByAgentDay[day + ':' + id] || 0), 0);
   const needs = OFFICE_STATE.approvals.filter(mine), held = OFFICE_STATE.held.filter(mine);
   ctx.fillStyle = SC.bg;
   ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
   // header: the runtime's state, in its own words
-  const F = !live ? { status: 'awaiting', note: 'TEST sample · no personal runtime is connected' }
-    : pf && (pf.state === 'ok' || pf.state === 'attention') ? { status: 'live', asOf: pf.asOf ? new Date(pf.asOf).getTime() : null }
-    : pf && pf.state === 'stale' ? { status: 'stale', note: 'last check overdue' } : { status: 'error', note: 'Personal runtime · not connected' };
+  // the header says exactly what the bridge says about the personal runtime (the same source as the cards)
+  const F = sample ? { status: 'awaiting', note: 'TEST sample · no personal runtime is connected' }
+    : feed === 'offline' ? { status: 'error', note: 'Studio bridge offline · showing the last known state' }
+    : !pf ? { status: 'awaiting', note: 'Personal runtime not configured' }
+    : pf.state === 'ok' ? { status: 'live', asOf: pf.asOf ? new Date(pf.asOf).getTime() : null }
+    : pf.state === 'stale' ? { status: 'stale', note: 'personal runtime · last check overdue' }
+    : { status: 'error', note: pf.note || (pf.state === 'attention' ? 'Personal runtime · needs a look' : 'Personal runtime · not connected') };
   scHeader(ctx, W, M, 'The study', F, detail ? 72 : 84, 'Personal · outside Beyder&Co. · nothing sent, booked or paid without Igor');
-  if (!live) scEyebrow(ctx, 'TEST · sample data', W - M, M + 112, 22, SC.dim, 5, 'right');
+  if (sample) scEyebrow(ctx, 'TEST · sample data', W - M, M + 112, 22, SC.dim, 5, 'right');
   const top = 250;
   scRule(ctx, M, W - M, top - 36);
   // three figures: open, done today, needs Igor
-  const cols = [['Open', open.length, SC.ink], ['Done today', done.length, SC.ink], ['Needs Igor', needs.length, needs.length ? BRAND.crimson : SC.ink]];
+  const cols = [['Open', open.length, SC.ink], ['Done today', doneToday, SC.ink], ['Needs Igor', needs.length, needs.length ? BRAND.crimson : SC.ink]];
   const cw = (W - 2 * M) / 3;
   cols.forEach(([label, n, col], i) => {
     const x = M + i * cw;
@@ -941,7 +950,7 @@ function drawStudyBoard(ctx, W, H, detail) {
       scText(ctx, t.title || '', x + 52, y, 40, col, t.column === 'done' ? 500 : 600, half - 52);
       if (t.note && t.column !== 'done') scText(ctx, t.note, x + 52, y + 32, 26, SC.dim, 500, half - 52);
     });
-    if (!rows.length) scText(ctx, live ? 'No personal work reported' : 'Nothing queued', x, y0 + 84, 34, SC.dim, 500, half);
+    if (!rows.length) scText(ctx, sample ? 'Nothing queued' : 'No personal work reported', x, y0 + 84, 34, SC.dim, 500, half);
     if (rows.length > maxRows) scText(ctx, `+ ${rows.length - maxRows} more`, x, y0 + 84 + maxRows * rh, 28, SC.dim, 500, half);
   });
   // what needs Igor, and what he held

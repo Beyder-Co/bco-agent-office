@@ -35,7 +35,7 @@ const ROOM = {
     /** The glass: a 2.25 m screen along the aisle side between x0 and x1, open at both ends (the two ways in), and a return down the west side. */
     glass: { h: 2.25, run: { x0: 4.05, x1: 6.35 }, exit: 1.05 },
     /** The board: a wide screen on a low graphite plinth behind the two desks, facing the room, below the ticker band. */
-    board: { x: 5.2, z: 5.6, w: 3.4, h: 1.9, y0: 0.5 },
+    board: { x: 5.2, z: 5.66, w: 3.4, h: 1.9, y0: 0.5 },
     seats: [{ x: 4.45, z: 4.95 }, { x: 5.95, z: 4.95 }] },
   tree: { x: 1.6, z: 4.75 }, // the sculpture of the mark, front middle
   /** Ten desk slots; the last two are reserved for agents who join later. */
@@ -1519,22 +1519,30 @@ function buildStudy(room) {
 function buildStudyBoard(g) {
   const B = ROOM.study.board;
   const grp = new THREE.Group();
-  const bezel = new THREE.Mesh(roundedBoxGeometry(B.w + 0.06, B.h + 0.06, 0.06, 0.016, 2), MAT.aluDark);
-  grp.add(bezel);
+  // a thin frame around a transparent LED glass: nothing solid behind it, so the floor cameras see the assistants through it
+  const f = 0.035, d = 0.04;
+  for (const [w, h, x, y] of [[B.w + 2 * f, f, 0, B.h / 2 + f / 2], [B.w + 2 * f, f, 0, -B.h / 2 - f / 2], [f, B.h, -B.w / 2 - f / 2, 0], [f, B.h, B.w / 2 + f / 2, 0]]) {
+    const bar = box(w, h, d, MAT.aluDark, x, y, 0);
+    bar.userData.pick = 'screen:study';
+    grp.add(bar);
+  }
   const face = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.h), MAT.screenOff);
-  face.position.z = 0.0312;
+  face.userData.pick = 'screen:study';
+  face.userData.frontOnly = true;   // always framed from the room side, never from outside the glass
+  face.userData.focusYaw = 0.2;     // off-axis so the middle glass post stays out of the sight line
   grp.add(face);
-  face.userData.pick = bezel.userData.pick = 'screen:study';
-  // the plinth and the two blades that carry the screen
-  const plinth = box(B.w * 0.7, 0.08, 0.36, MAT.graphite, 0, -(B.h / 2) - B.y0 + 0.04, -0.06);
-  grp.add(plinth);
-  for (const sx of [-1, 1]) grp.add(box(0.05, B.y0, 0.05, MAT.aluDark, sx * B.w * 0.3, -(B.h / 2) - B.y0 / 2, -0.03));
+  // two slim blades on pads, outside the chairs' roll-back arc
+  const bx = B.w * 0.45;
+  for (const sx of [-1, 1]) {
+    grp.add(box(0.045, B.y0 + f, 0.045, MAT.aluDark, sx * bx, -(B.h / 2) - B.y0 / 2 - f / 2, 0));
+    grp.add(box(0.3, 0.025, 0.2, MAT.graphite, sx * bx, -(B.h / 2) - B.y0 + 0.0125, 0));
+    addProxy(grp, 0.3, 0.3, 0.2, sx * bx, -(B.h / 2) - B.y0 + 0.15, 0);
+  }
   grp.position.set(B.x, B.y0 + B.h / 2, B.z);
   grp.rotation.y = Math.PI; // faces the room (the desks look north; the board stands behind them)
   grp.userData.keep = true;
-  addProxy(grp, B.w * 0.7, 0.3, 0.4, 0, -(B.h / 2) - B.y0 + 0.15, -0.06);
   g.add(grp);
-  ROOM_OBJ.panels.push({ key: 'study', title: 'The study', group: grp, face, bezel, w: B.w, h: B.h });
+  ROOM_OBJ.panels.push({ key: 'study', title: 'The study', group: grp, face, bezel: null, w: B.w, h: B.h });
   ROOM_OBJ.pickables.push(grp);
 }
 

@@ -42,7 +42,7 @@ const OFFICE_STATE = {
   /** task board: { id, title, agentId, column, at, record } — finished work is pruned to the latest 80 */
   tasks: [],
   /** running totals that survive pruning; finishedByDay is keyed by ET date */
-  stats: { finished: 0, finishedByDay: {} },
+  stats: { finished: 0, finishedByDay: {}, /** `${etDay}:${agentId}` → count; what the study's board calls Done today */ finishedByAgentDay: {} },
   /** systems and cadences shown under RUNNING on the main screen */
   running: [],  /** open issues (seeded from the operating record) */
   issues: [],  /** the MLS hot sheet: only ever filled by the live feed (never simulated) */
@@ -224,6 +224,8 @@ function moveTask(taskOrId, column) {
     const day = etDay();
     OFFICE_STATE.stats.finished++;
     OFFICE_STATE.stats.finishedByDay[day] = (OFFICE_STATE.stats.finishedByDay[day] || 0) + 1;
+    const k = day + ':' + task.agentId;
+    OFFICE_STATE.stats.finishedByAgentDay[k] = (OFFICE_STATE.stats.finishedByAgentDay[k] || 0) + 1;
     const done = OFFICE_STATE.tasks.filter(t => t.column === 'done' && !t.record);
     if (done.length > 80) {
       const drop = new Set(done.sort((a, b) => a.at - b.at).slice(0, done.length - 80));

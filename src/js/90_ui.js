@@ -1291,7 +1291,9 @@ const UI = {
     mesh.getWorldQuaternion(q);
     mesh.getWorldScale(sc);
     const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
-    if (normal.dot(camera.position.clone().sub(center)) < 0) normal.negate(); // face the side we're looking from
+    const ud = mesh.userData || {};
+    if (!ud.frontOnly && normal.dot(camera.position.clone().sub(center)) < 0) normal.negate(); // face the side we're looking from
+    if (ud.focusYaw) normal.applyAxisAngle(new THREE.Vector3(0, 1, 0), ud.focusYaw); // come in off-axis (past a glass post)
     const w = Math.abs(size.x * sc.x), h = Math.abs(size.y * sc.y);
     const t = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
     const rect = renderer.domElement.getBoundingClientRect();
