@@ -128,6 +128,28 @@ class CalmControls {
     };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', e => this.pointers.delete(e.pointerId));
+    // the keyboard: arrows orbit, shift+arrows pan, plus and minus zoom (only while the scene itself has focus)
+    el.tabIndex = 0;
+    el.setAttribute('role', 'application');
+    el.setAttribute('aria-label', 'The office. Arrow keys orbit the camera, shift with arrows pans, plus and minus zoom. Tab moves on to the controls.');
+    el.addEventListener('keydown', e => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key;
+      if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') {
+        e.preventDefault();
+        this._userMoved();
+        const sx = k === 'ArrowLeft' ? -1 : k === 'ArrowRight' ? 1 : 0, sy = k === 'ArrowUp' ? -1 : k === 'ArrowDown' ? 1 : 0;
+        if (e.shiftKey) this._pan(sx * 48, sy * 48);
+        else {
+          this.goal.theta -= sx * 0.09;
+          this.goal.phi = clamp(this.goal.phi + sy * 0.06, this.limits.phiMin, this.limits.phiMax);
+        }
+      } else if (k === '+' || k === '=' || k === '-' || k === '_') {
+        e.preventDefault();
+        this._userMoved();
+        this.goal.r = clamp(this.goal.r * (k === '-' || k === '_' ? 1.12 : 0.89), this.limits.rMin, this.limits.rMax);
+      }
+    });
     el.addEventListener(
       'wheel',
       e => {

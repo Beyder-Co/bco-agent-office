@@ -39,6 +39,8 @@
     const entries=[['brief','Daily brief','Workspace'],['needs','Review needs','Workspace'],['activity','Explore activity','Workspace']].map(([id,label,group])=>({id:'tab:'+id,label,group,run:()=>open(id)}));
     Object.entries(SCREEN).forEach(([key,label])=>{if(typeof VIEW!=='undefined'&&VIEW.screens[key])entries.push({id:'screen:'+key,label,group:'Screens',run:()=>{close();UI.openScreen(key);}});});
     Object.entries(CAMERAS).forEach(([key,label])=>entries.push({id:'camera:'+key,label,group:'Room views',run:()=>{close();UI.view(key);}}));
+    if(typeof VIEWS!=='undefined'&&VIEWS.saved)entries.push({id:'camera:saved',label:'My view',detail:'Your saved camera position',group:'Room views',run:()=>{close();UI.view('saved');}});
+    if(window.OfficeExperience)entries.push({id:'camera:save',label:'Save this view',detail:'Keep the camera where it is as My view',group:'Room views',run:()=>{close();window.OfficeExperience.saveView();}});
     OFFICE_STATE.order.forEach(id=>{const a=OFFICE_STATE.agents[id];if(a)entries.push({id:'agent:'+id,label:a.name,detail:a.specialty,group:'Agents',run:()=>{close();UI.select(id);}});});
     if(window.OfficeExperience)entries.push({id:'experience',label:'Controls and source health',group:'Office',run:()=>{close();window.OfficeExperience.open();}});
     entries.push({id:'board',label:'Task board',group:'Office',run:()=>{close();UI.toggleBoard(true);}});

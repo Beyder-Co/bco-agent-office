@@ -179,6 +179,7 @@ const UI = {
     document.querySelectorAll('.views button').forEach(b => b.addEventListener('click', () => this.view(b.dataset.view)));
     $('#viewSelect').addEventListener('change', e => this.view(e.target.value));
     $('#btnBoard').addEventListener('click', () => this.toggleBoard());
+    $('#btnSaveView').addEventListener('click', () => { $('#officeMore').open = false; if (window.OfficeExperience) OfficeExperience.saveView(); });
     $('#boardClose').addEventListener('click', () => this.toggleBoard(false));
     $('#btnAdd').addEventListener('click', () => this.openAdd());
     $('#btnFull').addEventListener('click', () => this.fullscreen());
@@ -364,6 +365,7 @@ const UI = {
     set(b, 'title', `${a.name} — ${a.specialty}`);
     set(b, 'aria-label', `${a.name} · ${s.text} · ${line.text}`);
     set(tile, 'class', 'tile' + (wait ? ' wait' : ''));
+    set(tile, 'data-s', a.status); // the collapsed rail shows state as a dot on the tile
     txt(tile, a.monogram);
     txt(b.querySelector('.nm'), a.name);
     set(chip, 'class', 'chip ' + s.cls);
@@ -960,6 +962,11 @@ const UI = {
     if ((was === 'hudson') !== (name === 'hudson') && this._booted) this.updateInsets();
     document.querySelectorAll('.views button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === name)));
     if (name) $('#viewSelect').value = name === 'hotsheet' ? 'hotlist' : name;
+    const live = $('#viewLive');
+    if (live && name && was !== name) {
+      const opt = $('#viewSelect').querySelector(`option[value="${name === 'hotsheet' ? 'hotlist' : name}"]`);
+      live.textContent = opt ? 'View: ' + opt.textContent : '';
+    }
   },
   _ray: new THREE.Raycaster(),
   raycast(x, y) {

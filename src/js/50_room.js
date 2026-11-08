@@ -1695,10 +1695,16 @@ function buildVestibule(room) {
   panel.position.set(cx0 - 0.28, 1.15, liftZc + CW / 2 - 0.008);
   panel.rotation.y = HALF_PI; // on the cab's side wall, facing in
   cab.add(panel);
-  // the shaft's outside: plaster to the roofline, a brushed cap
-  cab.add(box(CD + 0.04, ROOM.H - OH - 0.02, CW + 0.08, MAT.plaster, cx0 - CD / 2, OH + 0.02 + (ROOM.H - OH - 0.02) / 2, liftZc));
-  for (const sz of [-1, 1]) cab.add(box(CD + 0.04, OH + 0.02, 0.04, MAT.plaster, cx0 - CD / 2, (OH + 0.02) / 2, liftZc + sz * (CW / 2 + 0.04)));
-  cab.add(box(0.04, OH + 0.02, CW + 0.08, MAT.plaster, cx0 - CD - 0.04, (OH + 0.02) / 2, liftZc));
+  // the shaft's outside: the core, clad in graphite panels with open joints every 600 mm, a brushed cap. From the Door view
+  // this block is the first thing seen; plaster read as an unfinished white box.
+  cab.add(box(CD + 0.04, ROOM.H - OH - 0.02, CW + 0.08, MAT.graphite, cx0 - CD / 2, OH + 0.02 + (ROOM.H - OH - 0.02) / 2, liftZc));
+  for (const sz of [-1, 1]) cab.add(box(CD + 0.04, OH + 0.02, 0.04, MAT.graphite, cx0 - CD / 2, (OH + 0.02) / 2, liftZc + sz * (CW / 2 + 0.04)));
+  cab.add(box(0.04, OH + 0.02, CW + 0.08, MAT.graphite, cx0 - CD - 0.04, (OH + 0.02) / 2, liftZc));
+  for (let y = 0.6; y < ROOM.H - 0.1; y += 0.6) {
+    cab.add(box(0.006, 0.012, CW + 0.1, RM.gap, cx0 - CD - 0.063, y, liftZc)); // west face
+    for (const sz of [-1, 1]) cab.add(box(CD + 0.06, 0.012, 0.006, RM.gap, cx0 - CD / 2, y, liftZc + sz * (CW / 2 + 0.063))); // the sides
+  }
+  cab.add(box(CD + 0.08, 0.12, CW + 0.12, FMAT.satinBlack, cx0 - CD / 2, 0.06, liftZc)); // a dark base, as the plinths downstairs
   cab.add(box(CD + 0.08, 0.05, CW + 0.12, MAT.aluDark, cx0 - CD / 2, ROOM.H + 0.025, liftZc));
   cab.traverse(o => o.isMesh && (o.userData.noCollide = true));
   g.add(cab);
@@ -1854,6 +1860,16 @@ function updateRoom(dt, t) {
     SC.topMat.opacity = 0.04 + 0.42 * kk;
     SC.poolMat.opacity = 0.02 + 0.3 * kk;
     SC.revealMat.color.copy(SC.base).multiplyScalar(0.35 + 1.9 * kk);
+  }
+
+  // the study's mail tray: one sheet per queued personal task, nothing when the queue is empty (never a prop stack)
+  const tray = ROOM_OBJ.mailTray;
+  if (tray && typeof OFFICE_STATE !== 'undefined') {
+    let n = 0;
+    for (const tk of OFFICE_STATE.tasks) { const ag = OFFICE_STATE.agents[tk.agentId]; if (tk.column === 'queued' && ag && ag.zone === 'personal') n++; }
+    const st = tray.userData.stack, h = Math.min(n, 14) * 0.0045;
+    st.visible = h > 0;
+    st.scale.y = Math.max(h, 0.0001);
   }
 
   // the lounge model turns, and brightens when someone is reviewing it

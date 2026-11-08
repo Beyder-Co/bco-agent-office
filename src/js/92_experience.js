@@ -1,14 +1,21 @@
 /* Local presentation preferences and source inspector. No business data is stored. */
 window.OfficeExperience = (() => {
-  const KEY='bco.office.preferences.v1', defaults={performance:'balanced',motion:'system',density:'comfortable',homeView:'desks',rememberView:true};
-  const views=['overview','hudson','desks','boardroom','datawall','door','hotlist','screen','server','lounge','study'];
+  const KEY='bco.office.preferences.v1', defaults={performance:'balanced',motion:'system',density:'comfortable',homeView:'desks',rememberView:true,savedView:null};
+  const views=['overview','hudson','desks','boardroom','datawall','door','hotlist','screen','server','lounge','study','saved'];
   let saved={}, durable=true, dialog, trigger, returnFocus, timer=null, loading=false;
   try { saved=JSON.parse(localStorage.getItem(KEY)||'{}'); } catch(_){durable=false;}
   const preferences={...defaults};
   function validate(v){
     for(const [k,values] of Object.entries({performance:['balanced','quiet','sharp'],motion:['system','reduce','full'],density:['comfortable','compact'],homeView:views})) if(values.includes(v?.[k]))preferences[k]=v[k];
     if(typeof v?.rememberView==='boolean')preferences.rememberView=v.rememberView;
+    const sv=v?.savedView, num=x=>typeof x==='number'&&Number.isFinite(x);
+    if(sv&&Array.isArray(sv.target)&&sv.target.length===3&&sv.target.every(num)&&num(sv.r)&&num(sv.theta)&&num(sv.phi)&&sv.r>=2&&sv.r<=80&&sv.phi>0&&sv.phi<1.6&&sv.target.every(x=>Math.abs(x)<40))preferences.savedView={target:sv.target.map(x=>Math.round(x*1000)/1000),r:Math.round(sv.r*1000)/1000,theta:Math.round(sv.theta*1000)/1000,phi:Math.round(sv.phi*1000)/1000};
+    if(preferences.homeView==='saved'&&!preferences.savedView)preferences.homeView=defaults.homeView;
   }
+  /** My view: one camera position of Igor's own, kept with the display choices. */
+  function applySavedView(){const sv=preferences.savedView;if(sv)VIEWS.saved={target:sv.target.slice(),r:sv.r,theta:sv.theta,phi:sv.phi};else delete VIEWS.saved;const opt=document.querySelector('#viewSelect option[value="saved"]');if(opt)opt.hidden=!sv;}
+  function saveView(){const c=controls;preferences.savedView={target:[c.goalTarget.x,c.goalTarget.y,c.goalTarget.z].map(x=>Math.round(x*1000)/1000),r:Math.round(c.goal.r*1000)/1000,theta:Math.round(c.goal.theta*1000)/1000,phi:Math.round(c.goal.phi*1000)/1000};save();applySavedView();UI.markView('saved');UI.toast(durable?'Saved as My view · in the camera menu and ⌘K':'Kept as My view for this session · browser storage is unavailable');}
+  function clearSavedView(){preferences.savedView=null;if(preferences.homeView==='saved')preferences.homeView=defaults.homeView;save();applySavedView();if(UI.currentView==='saved')UI.view(preferences.homeView);}
   validate(saved);
   const media=window.matchMedia('(prefers-reduced-motion: reduce)');
   function apply(){REDUCED_MOTION=preferences.motion==='reduce'||preferences.motion==='system'&&media.matches;document.body.classList.toggle('office-compact',preferences.density==='compact');document.body.classList.toggle('office-reduced',REDUCED_MOTION);document.body.classList.toggle('office-full-motion',preferences.motion==='full');}
@@ -22,11 +29,13 @@ window.OfficeExperience = (() => {
     <label>Rendering<select data-pref="performance">${options([['balanced','Balanced · adaptive, 30 fps'],['quiet','Quiet · sharp, 18 fps'],['sharp','Sharp · full resolution, 30 fps']],preferences.performance)}</select></label>
     <label>Motion<select data-pref="motion">${options([['system','Follow system setting'],['reduce','Reduce motion'],['full','Full motion']],preferences.motion)}</select></label>
     <label>Reading density<select data-pref="density">${options([['comfortable','Comfortable'],['compact','Compact']],preferences.density)}</select></label>
-    <label>Opening view<select data-pref="homeView">${options(views.map(v=>[v,v==='hudson'?'The Hudson':v==='boardroom'?'Market Room':v==='study'?'The study':v==='lounge'?'Left lounge':v]),preferences.homeView)}</select></label></div>
+    <label>Opening view<select data-pref="homeView">${options(views.filter(v=>v!=='saved'||preferences.savedView).map(v=>[v,v==='hudson'?'The Hudson':v==='boardroom'?'Market Room':v==='study'?'The study':v==='lounge'?'Left lounge':v==='saved'?'My view':v]),preferences.homeView)}</select></label></div>
+    <p class="experience-muted">${preferences.savedView?'My view is saved. <button type="button" id="experience-forget-view" class="btn">Forget My view</button>':'Save a camera position of your own from More → Save view, or ⌘K → Save this view.'}</p>
     <label class="experience-check"><input type="checkbox" data-pref="rememberView" ${preferences.rememberView?'checked':''}> Remember the last camera view</label>
     <p class="experience-muted" id="preferences-state">${durable?'Saved on this browser. Only display choices are stored.':'Browser storage is unavailable. Choices last for this session.'}</p><button type="button" id="experience-reset" class="btn">Reset display choices</button>`;
     dialog.querySelectorAll('[data-pref]').forEach(el=>el.onchange=()=>{preferences[el.dataset.pref]=el.type==='checkbox'?el.checked:el.value;save();dialog.querySelector('#preferences-state').textContent=durable?'Saved on this browser. Only display choices are stored.':'Browser storage is unavailable. Choices last for this session.';UI.updateInsets();});
-    dialog.querySelector('#experience-reset').onclick=()=>{Object.assign(preferences,defaults);save();renderSettings();UI.updateInsets();dialog.querySelector('#experience-reset').focus();};
+    dialog.querySelector('#experience-reset').onclick=()=>{Object.assign(preferences,defaults);save();applySavedView();renderSettings();UI.updateInsets();dialog.querySelector('#experience-reset').focus();};
+    const forget=dialog.querySelector('#experience-forget-view');if(forget)forget.onclick=()=>{clearSavedView();renderSettings();};
   }
   function healthHTML(d){
     const feeds=Object.entries(d.feeds||{}),ready=d.readiness||{};
@@ -51,7 +60,7 @@ window.OfficeExperience = (() => {
   function close(){if(dialog?.open)dialog.close();clearInterval(timer);timer=null;}
   function open(){returnFocus=document.activeElement;document.getElementById('officeMore').open=false;window.OfficeWorkspace?.close();UI.closeMirror();UI.toggleBoard(false);renderSettings();dialog.showModal();refresh();clearInterval(timer);timer=setInterval(refresh,15000);}
   function init(){
-    if(dialog)return;apply();
+    if(dialog)return;apply();applySavedView();
     const style=document.createElement('style');style.textContent=`
     #experience-dialog{box-sizing:border-box;width:min(850px,calc(100vw - 24px));max-height:calc(100dvh - 32px);padding:0;border:1px solid #d8d6d3;border-radius:18px;background:#fff;color:#171717;box-shadow:0 24px 90px #0003;font:14px var(--ui);overflow:auto}
     #experience-dialog::backdrop{background:#17202b80;backdrop-filter:blur(8px)}
@@ -65,5 +74,5 @@ window.OfficeExperience = (() => {
     document.addEventListener('keydown',e=>{if(!dialog.open)return;e.stopImmediatePropagation();if(e.key==='Escape'){e.preventDefault();close();}},true);
     UI.updateInsets();
   }
-  return {preferences,init,open,close,refresh,healthHTML, night, motionScale:()=>night()?.45:1, fps:()=>preferences.performance==='quiet'||night()?18:30,rememberView:name=>{if(preferences.rememberView&&views.includes(name)){preferences.homeView=name;save();}}};
+  return {preferences,init,open,close,refresh,healthHTML,saveView,clearSavedView, night, motionScale:()=>night()?.45:1, fps:()=>preferences.performance==='quiet'||night()?18:30,rememberView:name=>{if(preferences.rememberView&&views.includes(name)){preferences.homeView=name;save();}}};
 })();
