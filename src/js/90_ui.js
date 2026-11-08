@@ -112,6 +112,16 @@ function rosterLine(a) {
   return { text: a.detail || 'Between tasks', quiet: true };
 }
 
+/** What each working object opens, for the pointer label (screens by their Workspace names). */
+const PICK_NAMES = {
+  main: 'Open · Activity and highlights', today: 'Open · Follow-ups and leads', pipeline: 'Open · Pipeline and dates',
+  hot: 'Open · NJMLS hot sheet', hotsheet: 'Open · NJMLS hot sheet', hotnew: 'Open · NJMLS new and open', hotdone: 'Open · NJMLS price and sold',
+  ticker: 'Open · Market rates', study: 'Open · The study board', manual: 'Open · Operating manual',
+  server: 'Server cabinet · one light per desk', sculpture: 'The ampersand · what needs you', logo: 'Beyder&Co.',
+};
+
+const ICON_PATH = d => `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+
 const UI = {
   selected: null,
   panelExpanded: false,
@@ -148,7 +158,7 @@ const UI = {
       this.renderCounts();
       if (ev.type === 'request') {
         const a = OFFICE_STATE.agents[ev.gate.agentId];
-        if (OFFICE_STATE.approvals.length > 1) this.toast(`${a.name} also needs you`);
+        if (OFFICE_STATE.approvals.length > 1) this.toast(`${a.name} also needs you`, { agent: a.id });
       }
       if (this.selected) this.renderPanel(false);
       this.renderBoard();
@@ -180,6 +190,7 @@ const UI = {
     $('#viewSelect').addEventListener('change', e => this.view(e.target.value));
     $('#btnBoard').addEventListener('click', () => this.toggleBoard());
     $('#btnSaveView').addEventListener('click', () => { $('#officeMore').open = false; if (window.OfficeExperience) OfficeExperience.saveView(); });
+    $('#btnKeys').addEventListener('click', () => { $('#officeMore').open = false; this.shortcuts(); });
     $('#boardClose').addEventListener('click', () => this.toggleBoard(false));
     $('#btnAdd').addEventListener('click', () => this.openAdd());
     $('#btnFull').addEventListener('click', () => this.fullscreen());
@@ -200,7 +211,7 @@ const UI = {
     $('#counts').addEventListener('click', e => {
       const b = e.target.closest('.count');
       if (!b) return;
-      if (b.dataset.k === 'WAITING') { const id=OFFICE_STATE.approvals[0]?.agentId || OFFICE_STATE.order.find(id=>OFFICE_STATE.agents[id].status==='WAITING'); if(id)this.select(id); }
+      if (b.dataset.k === 'WAITING') ATTENTION.next();
       if (b.dataset.k === 'DONE') this.toggleBoard(true);
     });
     $('#rosterList').addEventListener('click', e => {
@@ -227,6 +238,10 @@ const UI = {
         else if (k === 'n') this.view('hudson');
         else if (k === 'h') this.view('hotlist');
         else if (k === 's') this.openMirror();
+        else if (k === 'a') ATTENTION.next();
+        else if (e.key === ']' || e.key === '[') this.cycle(e.key === ']' ? 1 : -1);
+        else if (k === 'l') this.copyLink();
+        else if (e.key === '?') this.shortcuts();
         return;
       }
       if (more.open) { more.open=false; $('#moreSummary').focus(); return; }
@@ -301,6 +316,8 @@ const UI = {
   /* ---------- top bar ---------- */
   renderCounts() {
     const c = officeCounts();
+    const prev = this._counts || null;
+    this._counts = { ...c };
     const k = [['WORKING', 'Working', 'key'], ['THINKING', 'Thinking'], ['WAITING', 'Waiting', 'key'], ['IDLE', 'Idle']];
     $('#counts').innerHTML =
       k.map(([key, label, cls]) => {
@@ -309,6 +326,10 @@ const UI = {
         return `<${tag} ${tag==='button'?'type="button"':''} class="count ${cls || ''} ${hot ? 'hot' : ''}" data-k="${key}" ${key === 'WAITING' ? 'aria-label="Agents needing attention: ' + c[key] + '"' : ''}>${hot ? '<span class="pip" aria-hidden="true"></span>' : ''}<span class="n tnum">${c[key]}</span><span class="l">${label}</span></${tag}>`;
       }).join('') +
       `<button type="button" class="count total key" data-k="DONE" title="Studio job runs finished today. Opens the task board; job completion is not client delivery."><span class="n tnum">${c.DONE}</span><span class="l">Done</span></button>`;
+    if (prev && !REDUCED_MOTION) $('#counts').querySelectorAll('.count').forEach(el => {
+      const k = el.dataset.k, a = prev[k], b = c[k];
+      if (a != null && a !== b) { const n = el.querySelector('.n'); n.dataset.was = a; n.classList.add(b > a ? 'roll-up' : 'roll-down'); }
+    });
     if (this._booted) requestAnimationFrame(() => this.updateInsets());
     const n = deskAgents().length;
     $('#btnAdd').disabled = n >= CAST_CAP;
@@ -368,6 +389,8 @@ const UI = {
     set(tile, 'data-s', a.status); // the collapsed rail shows state as a dot on the tile
     txt(tile, a.monogram);
     txt(b.querySelector('.nm'), a.name);
+    if (this._booted && chip.dataset.s && chip.dataset.s !== s.cls && !REDUCED_MOTION) { b.classList.remove('flip'); void b.offsetWidth; b.classList.add('flip'); clearTimeout(b._flipT); b._flipT = setTimeout(() => b.classList.remove('flip'), 900); }
+    chip.dataset.s = s.cls;
     set(chip, 'class', 'chip ' + s.cls);
     if (chip.lastChild.nodeValue !== s.text) chip.lastChild.nodeValue = s.text;
     set(tk, 'class', 'tk' + (line.quiet ? ' quiet' : ''));
@@ -403,7 +426,10 @@ const UI = {
     if (!b) return;
     const a = OFFICE_STATE.agents[id];
     const s = stateWords(a);
-    b.el.className = `bubble ${s.cls}${this.selected === id ? ' sel' : ''}${this.compact ? ' compact' : ''}`;
+    const flip = this._booted && b.cls != null && b.cls !== s.cls && !REDUCED_MOTION;
+    if (flip) { clearTimeout(b.flipT); b.flipUntil = performance.now() + 700; b.flipT = setTimeout(() => this.renderBubble(id), 720); }
+    b.cls = s.cls;
+    b.el.className = `bubble ${s.cls}${this.selected === id ? ' sel' : ''}${this.compact ? ' compact' : ''}${b.crowd ? ' crowd' : ''}${b.flipUntil > performance.now() ? ' flip' : ''}`;
     b.el.style.setProperty('--c', agentHex(a));
     if (!b.el.querySelector('.st')) {
       b.el.innerHTML = '<span class="dot" aria-hidden="true"></span><span class="nm"></span><span class="st"></span>';
@@ -433,7 +459,7 @@ const UI = {
       b.vis = this._v.z < 1 && Math.abs(this._v.x) < 1.2 && Math.abs(this._v.y) < 1.2;
       b.x = (this._v.x * 0.5 + 0.5) * w;
       b.y = (-this._v.y * 0.5 + 0.5) * h;
-      b.w = b.el.offsetWidth || 90;
+      b.w = b.crowd ? b.fullW || 90 : (b.fullW = b.el.offsetWidth || 90); // a shrunk pill keeps its full width for the test, so it never flickers
       b.h = b.el.offsetHeight || 22;
       list.push(b);
     }
@@ -457,6 +483,11 @@ const UI = {
         }
         if (!moved) break;
       }
+      // still on top of a placed pill after the nudges (the far views): this one shrinks to its dot, unless it is
+      // waiting, selected or under the pointer; its name comes back as soon as there is room
+      const id = b.el.dataset.id;
+      const crowd = !b.wait && id !== this.selected && id !== this.hoverId && placed.some(o => !o.crowd && Math.abs(b.x - o.x) < (b.w + o.w) / 2 && Math.abs(y - o.py) < (b.h + o.h) / 2 - 2);
+      if (crowd !== !!b.crowd) { b.crowd = crowd; b.el.classList.toggle('crowd', crowd); }
       // only the nudge eases; the pill itself tracks its character exactly, even mid-glide
       const off = y - b.y;
       b.off = b.off == null ? off : b.off + (off - b.off) * 0.3;
@@ -465,7 +496,7 @@ const UI = {
       const shift = b.y - b.py;
       b.lead.style.height = shift > 6 ? (shift - 5).toFixed(1) + 'px' : '0px';
       b.el.style.transform = `translate(${b.x.toFixed(1)}px, ${b.py.toFixed(1)}px) translate(-50%, -100%)`;
-      b.el.style.visibility = b.vis ? 'visible' : 'hidden';
+      b.el.style.visibility = b.vis && !this._focus ? 'visible' : 'hidden'; // a screen up close is never covered by name pills
       b.el.style.zIndex = String((b.wait ? 200 : 100) + (list.length - i));
       b.el.classList.toggle('dim', !!(this.selected && this.selected !== b.el.dataset.id));
     });
@@ -513,7 +544,11 @@ const UI = {
     const was = this.selected;
     this.selected = id;
     this.logCount = 0;
-    $('#panel').hidden = false;
+    const panel = $('#panel');
+    clearTimeout(this._panelT);
+    panel.classList.remove('leaving');
+    panel.hidden = false;
+    if (was && was !== id && !REDUCED_MOTION) { panel.classList.remove('swap'); void panel.offsetWidth; panel.classList.add('swap'); } // the next agent's card settles in place
     this.renderPanel(true);
     this.renderGate();
     if (was) this.renderRosterRow(was), this.renderBubble(was);
@@ -521,6 +556,34 @@ const UI = {
     this.renderBubble(id);
     this.focus(id);
     this.markView(null);
+    this.syncHash('agent/' + id);
+  },
+  /** The address bar follows what is open (#desks, #agent/crimson, #screen/today) without adding history entries,
+   *  so a reload, a bookmark or a link returns to the same place. */
+  /** ] and [ : the next or previous agent, card open, in crew order. */
+  cycle(dir) {
+    const order = OFFICE_STATE.order;
+    if (!order.length) return;
+    const i = order.indexOf(this.selected);
+    this.select(order[i < 0 ? (dir > 0 ? 0 : order.length - 1) : (i + dir + order.length) % order.length]);
+  },
+  /** L, the card's link button and ⌘K: a link to exactly what is open, for the back office or a bookmark. */
+  async copyLink() {
+    const url = location.href;
+    const what = this.selected ? OFFICE_STATE.agents[this.selected].name : location.hash.startsWith('#screen/') ? 'this screen' : this.currentView ? 'this view' : 'the office';
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(url);
+      this.toast(`Link to ${what} copied`);
+    } catch (_) {
+      this.toast(`Copy the address bar for a link to ${what}`);
+    }
+  },
+  syncHash(h) {
+    if (!this._booted || typeof history === 'undefined' || !history.replaceState) return;
+    const want = h ? '#' + h : location.pathname + location.search;
+    if ((h ? '#' + h : '') === location.hash) return;
+    try { history.replaceState(null, '', want); } catch (_) {}
   },
   focus(id) {
     const wb = WORLD.byId[id];
@@ -536,15 +599,25 @@ const UI = {
   deselect() {
     const id = this.selected;
     this.selected = null;
-    $('#panel').hidden = true;
+    this.hidePanel();
     this.renderGate();
     this.updateInsets();
     if (id) this.renderRosterRow(id), this.renderBubble(id);
     if (this.prevViewName) controls.glideTo(viewOf(this.prevViewName), 1.4);
     else if (this.prevView) controls.glideTo(this.prevView, 1.4);
     this.markView(this.prevViewName || null);
+    this.syncHash(this.prevViewName || null);
     this.prevView = null;
     this.prevViewName = null;
+  },
+  /** The card steps aside over a fifth of a second rather than vanishing; the room reclaims the space at once. */
+  hidePanel() {
+    const p = $('#panel');
+    if (p.hidden) return;
+    clearTimeout(this._panelT);
+    if (REDUCED_MOTION) { p.hidden = true; return; }
+    p.classList.add('leaving');
+    this._panelT = setTimeout(() => { p.classList.remove('leaving', 'swap'); if (!this.selected) p.hidden = true; }, 220);
   },
   renderPanel(full) {
     const a = OFFICE_STATE.agents[this.selected];
@@ -582,7 +655,12 @@ const UI = {
     const head = `<div class="p-head">
         ${tileHTML(a, a.status === 'WAITING' ? ' wait' : '')}
         <div><h2>${esc(a.name)}</h2><div class="sp">${esc(a.specialty)}</div></div>
-        <button type="button" class="closeX" data-act="close" aria-label="Close detail panel"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg></button>
+        <div class="p-tools">
+          <button type="button" class="closeX" data-act="prev" aria-label="Previous agent" title="Previous agent  [">${ICON_PATH('M9 2 4 7l5 5')}</button>
+          <button type="button" class="closeX" data-act="next" aria-label="Next agent" title="Next agent  ]">${ICON_PATH('M5 2l5 5-5 5')}</button>
+          <button type="button" class="closeX" data-act="link" aria-label="Copy a link to this agent" title="Copy link  L">${ICON_PATH('M6 8.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M8 5.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7')}</button>
+          <button type="button" class="closeX" data-act="close" aria-label="Close detail panel" title="Close  Esc">${ICON_PATH('M2 2l10 10M12 2 2 12')}</button>
+        </div>
       </div>`;
     // what it needs from Igor: a line each, three at a time; a click opens the draft and the one action that fits
     const shown = this.needsAll ? gates : gates.slice(0, 3);
@@ -671,6 +749,8 @@ const UI = {
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'close') this.deselect();
+    else if (act === 'prev' || act === 'next') this.cycle(act === 'next' ? 1 : -1);
+    else if (act === 'link') this.copyLink();
     else if (act === 'panel-expand') { this.panelExpanded = !this.panelExpanded; if(this.panelExpanded){const g=OFFICE_STATE.approvals.find(g=>g.agentId===this.selected);if(g)this.needOpen=g.id;} this.renderPanel(); }
     else if (act === 'compose-toggle') { this.composerOpen = !this.composerOpen; this.syncPanelSize(); if(this.composerOpen) $('#cText')?.focus(); }
     else if (act === 'need') (this.needOpen = this.needOpen === b.dataset.g ? null : b.dataset.g), this.renderPanel();
@@ -916,14 +996,16 @@ const UI = {
   updateInsets() {
     const W = window.innerWidth, H = window.innerHeight;
     const r = $('#roster').getBoundingClientRect();
-    const left = !$('#roster').hidden ? r.right : 0;
-    const panelOpen = !$('#panel').hidden;
+    const strip = W <= 620 && $('#roster').classList.contains('collapsed'); // phones: the rail is a strip along the bottom
+    const left = !$('#roster').hidden && !strip ? r.right : 0;
+    const panelOpen = !$('#panel').hidden && !$('#panel').classList.contains('leaving');
     const right = panelOpen && W > 900 ? W - $('#panel').getBoundingClientRect().left : 0;
     const top = $('#topbar').getBoundingClientRect().bottom;
     document.documentElement.style.setProperty('--bar-h', Math.ceil(top) + 'px');
     let bottom = ($('#freshness')?.getBoundingClientRect().height || 0) + 12;
     if (!$('#board').hidden) bottom = Math.max(bottom, H - $('#board').getBoundingClientRect().top);
     else if (!$('#gate').hidden) bottom = Math.max(bottom, H - $('#gate').getBoundingClientRect().top);
+    if (strip && !$('#roster').hidden) bottom = Math.max(bottom, H - r.top);
     if (panelOpen && W <= 900) bottom = H - $('#panel').getBoundingClientRect().top;
     const ox = -(left - right) / 2, oy = this.currentView === 'hudson' ? 0 : -(top - bottom) / 2; // the Hudson view keeps its horizon
     if (this._focus) this._focus.offsets = [ox, oy]; // a screen up close keeps its square frame; these apply on the way back
@@ -949,7 +1031,7 @@ const UI = {
     if (this._focus) this.unfocusScreen(false);
     if (this.selected) {
       this.selected = null;
-      $('#panel').hidden = true;
+      this.hidePanel();
       this.updateInsets();
       OFFICE_STATE.order.forEach(id => (this.renderRosterRow(id), this.renderBubble(id)));
       this.prevView = null;
@@ -959,6 +1041,7 @@ const UI = {
   },
   markView(name) {
     if(this._booted && window.OfficeExperience) OfficeExperience.rememberView(name);
+    if (name && !this.selected) this.syncHash(name);
     const was = this.currentView;
     this.currentView = name;
     if ((was === 'hudson') !== (name === 'hudson') && this._booted) this.updateInsets();
@@ -1027,8 +1110,21 @@ const UI = {
     const u = hit && hit.object.userData;
     const id = u && u.body && u.agentId && OFFICE_STATE.agents[u.agentId] ? u.agentId : null;
     renderer.domElement.style.cursor = !hit ? '' : id ? 'grab' : 'pointer';
+    this.pickTip(!id && u && u.pick ? u.pick : null);
     this.setHover(id);
     this.cardDwell();
+  },
+  /** Working objects say what they open (scenery says nothing): a small label follows the pointer over a screen,
+   *  the server cabinet or the sculpture, so the difference between a control and a decoration is never a guess. */
+  pickTip(pick) {
+    let tip = $('#pickTip');
+    if (!tip) { tip = document.createElement('div'); tip.id = 'pickTip'; tip.setAttribute('aria-hidden', 'true'); document.body.appendChild(tip); }
+    const key = !pick ? null : pick.startsWith('screen:') ? pick.slice(7) : pick === 'mainscreen' ? 'main' : pick.startsWith('panel:') ? pick.slice(6) : pick;
+    const name = key && PICK_NAMES[key];
+    if (!name || !this._hoverXY) { tip.hidden = true; return; }
+    if (tip.textContent !== name) tip.textContent = name;
+    tip.hidden = false;
+    tip.style.transform = `translate(${this._hoverXY[0] + 14}px, ${this._hoverXY[1] + 16}px)`;
   },
   setHover(id) {
     const figOf = k => k && WORLD.byId[k] && WORLD.byId[k].fig;
@@ -1214,6 +1310,7 @@ const UI = {
     this._dataHtml = null;
     this.renderDataList();
     $('#mirror').hidden = false;
+    this.syncHash('screen/' + key);
     this._mirrorI = setInterval(() => this.renderDataList(), 1000);
   },
   renderDataList() {
@@ -1308,6 +1405,7 @@ const UI = {
     }
     this.setHover && this.setHover(null);
     document.body.classList.add('screen-focus');
+    this.syncHash('screen/' + key);
     this.toast(key === 'today' ? 'Click an item to handle it in Follow Up Boss · anywhere else to go back'
       : key === 'main' ? 'Click a tab, or a name to open it in Follow Up Boss · anywhere else to go back'
       : 'Details up close. Click anywhere to go back.');
@@ -1359,6 +1457,7 @@ const UI = {
       if (VIEW.dirty) VIEW.dirty(f.key);
     }
     document.body.classList.remove('screen-focus');
+    this.clearScreenHash();
   },
   openMirror() {
     if (this._focus) this.unfocusScreen(false);
@@ -1383,6 +1482,12 @@ const UI = {
     this._mirrorHtml = null;
     clearInterval(this._mirrorI);
     if (this.mirrorReturn) controls.glideTo(this.mirrorReturn, 1.3);
+    this.clearScreenHash();
+  },
+  /** A screen closed: the address returns to the view (or the agent) it was opened over. */
+  clearScreenHash() {
+    if (!location.hash.startsWith('#screen/')) return;
+    this.syncHash(this.selected ? 'agent/' + this.selected : this.currentView || null);
   },
   renderMirror() {
     const c = officeCounts();
@@ -1503,12 +1608,59 @@ const UI = {
     return [8, 9].includes(this.freeDesk());
   },
   /* ---------- misc ---------- */
-  toast(text) {
+  /** Every shortcut in one place (?), so the keyboard route is discoverable rather than folklore. */
+  shortcuts() {
+    let d = $('#keysDialog');
+    if (!d) {
+      d = document.createElement('dialog');
+      d.id = 'keysDialog';
+      d.setAttribute('aria-labelledby', 'keysTitle');
+      const row = (k, v) => `<tr><th scope="row">${k.split(' ').map(x => `<kbd>${x}</kbd>`).join(' ')}</th><td>${v}</td></tr>`;
+      d.innerHTML = `<header><h2 id="keysTitle">Keyboard</h2><button type="button" class="btn" id="keysClose">Close</button></header>
+        <table><tbody>
+        ${row('⌘K', 'Go to any screen, view or agent')}
+        ${row('1 … 0', 'Open an agent (in crew order)')}
+        ${row('[ ]', 'Previous · next agent, card open')}
+        ${row('A', 'Go through what needs you, one at a time')}
+        ${row('L', 'Copy a link to what is open')}
+        ${row('O D N', 'Overview · Desks · The Hudson')}
+        ${row('M W H', 'Market Room · Data Wall · Hot list')}
+        ${row('B', 'Crew task board')}
+        ${row('S', 'Main screen, full size')}
+        ${row('← → ↑ ↓', 'Turn round the room (the room must have focus)')}
+        ${row('⇧ + arrows', 'Move across the floor')}
+        ${row('+ −', 'Closer · farther')}
+        ${row('Esc', 'Back: closes the top layer and returns the camera')}
+        ${row('?', 'This list')}
+        </tbody></table><p class="g-meta">Links keep their place: #desks, #study, #agent/crimson, #screen/today.</p>`;
+      document.body.appendChild(d);
+      d.querySelector('#keysClose').onclick = () => d.close();
+    }
+    if (!d.open) d.showModal();
+  },
+  /** A short note at the bottom left. With { agent } it carries a Show button that opens that agent. */
+  toast(text, opts = {}) {
     const t = document.createElement('div');
     t.className = 'toast';
-    t.textContent = text;
+    t.setAttribute('role', 'status');
+    const span = document.createElement('span');
+    span.textContent = text;
+    t.appendChild(span);
+    const agent = opts.agent && OFFICE_STATE.agents[opts.agent] ? opts.agent : null;
+    if (agent) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = 'Show';
+      b.setAttribute('aria-label', 'Show ' + OFFICE_STATE.agents[agent].name);
+      b.onclick = () => { this.select(agent); leave(); };
+      t.appendChild(b);
+      t.classList.add('act');
+    }
     $('#toasts').appendChild(t);
-    setTimeout(() => t.remove(), 3600);
+    const leave = () => { if (!t.isConnected || t.classList.contains('out')) return; t.classList.add('out'); setTimeout(() => t.remove(), REDUCED_MOTION ? 0 : 260); };
+    let timer = setTimeout(leave, agent ? 6000 : 3600);
+    t.addEventListener('pointerenter', () => clearTimeout(timer));
+    t.addEventListener('pointerleave', () => { clearTimeout(timer); timer = setTimeout(leave, 2000); });
     while ($('#toasts').children.length > 3) $('#toasts').firstElementChild.remove();
   },
   fullscreen() {

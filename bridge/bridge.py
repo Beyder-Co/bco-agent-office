@@ -62,8 +62,8 @@ try:
 except Exception:  # pragma: no cover - zoneinfo ships with 3.9+
     ET = timezone(timedelta(hours=-5))
 
-VERSION = "1.6.0"
-PAGE_VERSION = "8.9.0"
+VERSION = "1.7.0"
+PAGE_VERSION = "9.0.0"
 HOME = Path.home()
 
 
@@ -1912,6 +1912,10 @@ def build_hotsheet(doc, viewers: dict, our_streets: set, now: datetime, mtime: f
     elif as_of_dt and hotsheet_overdue(as_of_dt, now):
         msg["status"] = "stale"
         msg["note"] = f"Hot sheet last published {fmt_stamp(as_of_dt)}"
+    elif as_of_dt and (now - as_of_dt) > timedelta(hours=6):
+        # still current by its schedule (one pull a day), but not fresh: say so rather than look live (9.0 live audit)
+        msg["note"] = f"Scheduled pull · published {fmt_stamp(as_of_dt)} · next {fmt_stamp(hotsheet_next_run(now))}"
+        msg["cadence"] = "scheduled"
     if not recognized or (as_of_dt and as_of_dt > now + timedelta(minutes=5)):
         msg["status"] = "error"
         msg["note"] = "Hot-sheet layout or pull timestamp invalid; verify the source receipt"
@@ -2454,6 +2458,22 @@ def command_digest(value):
 
 
 REPAIR_DAILY_LIMIT = 2  # automatic repair handoffs per job label per 24 h
+HANDOFF_STALL_SECONDS = 2 * 3600  # a handoff queued this long without Crimson's receipt is reported as not picked up
+
+
+def stalled_handoffs(rows, now: float) -> list:
+    """Queued handoffs Crimson has not received after HANDOFF_STALL_SECONDS, oldest first. Derived only: nothing is
+    resent, re-queued or marked; the queue between the bridge and Crimson's chat lies outside the office (9.0 live
+    audit: two repairs sat queued for 52 and 7 hours)."""
+    out = []
+    for r in rows or []:
+        if r.get('state') != 'queued':
+            continue
+        at = parse_iso(r.get('updatedAt') or r.get('at'))
+        if at and now - at.timestamp() >= HANDOFF_STALL_SECONDS:
+            out.append((now - at.timestamp(), r))
+    return [dict(r, queuedSeconds=round(age)) for age, r in sorted(out, key=lambda x: -x[0])]
+
 
 class OfficeCommands:
     """One reviewed handoff, durable before dispatch. Uncertain submissions never retry automatically."""
@@ -2505,7 +2525,12 @@ class OfficeCommands:
         keys = ('id','agentId','title','state','at','updatedAt','note','evidence','queueId','sourceId','sourceVersion','automatic','needsAnswer','attemptCount','dependency','recheckedAt','routing')
         try:
             rows=self.rows(); newest={r['id'] for r in rows[-100:]}
-            return {'type':'commands','items':[{k:r[k] for k in keys if k in r} for r in rows if r['id'] in newest or r['state'] not in ('answered','assigned','reported_complete','resolved_by_source')]}
+            items=[{k:r[k] for k in keys if k in r} for r in rows if r['id'] in newest or r['state'] not in ('answered','assigned','reported_complete','resolved_by_source')]
+            now=self.clock()
+            for item in items:
+                at=parse_iso(item.get('updatedAt') or item.get('at')) if item.get('state')=='queued' else None
+                if at: item['queuedSeconds']=max(0,round(now-at.timestamp())); item['stalled']=item['queuedSeconds']>=HANDOFF_STALL_SECONDS
+            return {'type':'commands','items':items}
         except (OSError,ValueError):
             return {'type':'commands','items':[], 'error':'Command history needs repair; submission is held.'}
 
@@ -3864,7 +3889,14 @@ class HotSheetWatcher:
             stop.wait(60)
 
 
-def system_needs(hotsheet: dict, fleet: dict, fub_note: str = None) -> list:
+def failure_signature(j) -> str:
+    """Two jobs failing for one reason report the same words: compare the summaries with numbers and spacing
+    folded away (a count or a time in the message must not split them)."""
+    t = re.sub(r"\d+", "#", str(j.get("summary") or "").lower())
+    return re.sub(r"\s+", " ", t).strip()[:160]
+
+
+def system_needs(hotsheet: dict, fleet: dict, fub_note: str = None, commands: list = None, now: float = None) -> list:
     """Problems only Igor can fix, first in the "Needs you" list: the NJMLS sign-in, a Follow Up Boss key, a job
     reporting a failure. Each says what to do; none of them is fixed by the office."""
     out = []
@@ -3875,12 +3907,40 @@ def system_needs(hotsheet: dict, fleet: dict, fub_note: str = None) -> list:
                     "when": "Hot sheet paused", "link": None})
     if fub_note and ("key" in fub_note.lower() or "account" in fub_note.lower()):
         out.append({"id": "sys-fub", "agent": "engineer", "title": fub_note, "when": "Now", "link": None})
-    for j in (fleet or {}).get("jobs") or []:
-        if j.get("ok") is False:
-            at = parse_iso(j.get("lastAt"))
-            out.append({"id": f"sys-job-{j['label']}", "agent": j.get("agent"),
-                        "title": f"{j['name']} reported a problem", "detail": " · ".join(v for v in (j.get("failureCode"),j.get("summary"),j.get("recoveryStep")) if v), "at":j.get("lastAt"),
-                        "when": fmt_time(at) if at else "", "link": None if j["label"].startswith(PERSONAL_PREFIX) else "https://command.beyderco.com"})
+    failing = [j for j in (fleet or {}).get("jobs") or [] if j.get("ok") is False]
+    # one cause, one item: jobs whose failures read the same are grouped (9.0 live audit: skiptrace-scan and the
+    # NJMLS Matrix intake failing with one scrape error showed as two unrelated problems)
+    groups: dict = {}
+    for j in failing:
+        sig = failure_signature(j)
+        groups.setdefault(sig or j["label"], []).append(j)
+    for sig, js in groups.items():
+        personal = all(j["label"].startswith(PERSONAL_PREFIX) for j in js)
+        if len(js) == 1 or not sig:
+            for j in js:
+                at = parse_iso(j.get("lastAt"))
+                out.append({"id": f"sys-job-{j['label']}", "agent": j.get("agent"),
+                            "title": f"{j['name']} reported a problem", "detail": " · ".join(v for v in (j.get("failureCode"),j.get("summary"),j.get("recoveryStep")) if v), "at":j.get("lastAt"),
+                            "when": fmt_time(at) if at else "", "link": None if j["label"].startswith(PERSONAL_PREFIX) else "https://command.beyderco.com"})
+            continue
+        js = sorted(js, key=lambda j: j.get("lastAt") or "")
+        latest = parse_iso(js[-1].get("lastAt"))
+        first = js[0]
+        out.append({"id": "sys-cause-" + hashlib.sha1(sig.encode()).hexdigest()[:12], "agent": first.get("agent"),
+                    "title": f"{len(js)} jobs fail with the same error · " + ", ".join(j["name"] for j in js),
+                    "detail": " · ".join(v for v in (first.get("failureCode"), first.get("summary"), first.get("recoveryStep")) if v)
+                              + " · One cause: fix it once, then each job's next ordinary run confirms it.",
+                    "labels": [j["label"] for j in js], "at": js[-1].get("lastAt"),
+                    "when": fmt_time(latest) if latest else "", "link": None if personal else "https://command.beyderco.com"})
+    stalled = stalled_handoffs(commands, time.time() if now is None else now)
+    if stalled:
+        hours = stalled[0]["queuedSeconds"] / 3600
+        n = len(stalled)
+        out.append({"id": "sys-handoff-stalled", "agent": "crimson",
+                    "title": f"Crimson hasn’t picked up {n} handoff{'s' if n != 1 else ''} · oldest queued {hours:.0f} h",
+                    "detail": "Queued in Crimson’s chat on the Studio and not yet received. Open the coordinator chat there so the queue is read. "
+                              "Nothing is resent automatically; while three automatic repairs wait, no new one is started.",
+                    "at": stalled[0].get("updatedAt") or stalled[0].get("at"), "when": f"{hours:.0f} h", "link": None})
     return out
 
 
@@ -4066,8 +4126,13 @@ def main(argv: list) -> int:
             HUB.set_feed("rates","stale",iso_z(datetime.now(timezone.utc)),msg.get("note"))
     markets.on_update = publish_markets
     fleet = FleetWatcher(HUB)
+    def _command_rows():
+        try:
+            return COMMANDS.rows()
+        except (OSError, ValueError):
+            return []
     fub_poller.system_items = lambda: system_needs(watcher.state, fleet.fleet,
-                                                   fub_poller.problem_note)
+                                                   fub_poller.problem_note, _command_rows())
     for target in (fub_poller.run, watcher.run, markets.run, fleet.run, keepalive):
         threading.Thread(target=target, args=(stop,), daemon=True).start()
     threading.Timer(4.0, open_office_once_per_boot).start()

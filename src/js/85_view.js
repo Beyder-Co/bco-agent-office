@@ -129,6 +129,7 @@ function seatAgent(a) {
   WORLD.figures.push(fig);
   WORLD.stations.push(st);
   WORLD.byId[a.id] = { fig, st, slot: a.slot };
+  if (typeof XRAY !== 'undefined' && UI._booted) XRAY.patchTree(st.group); // an agent added later gets the same line-of-sight treatment
   return WORLD.byId[a.id];
 }
 

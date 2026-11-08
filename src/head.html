@@ -1,4 +1,4 @@
-<title>Beyder&amp;Co. Realty · Agent Office v8.9.0</title>
+<title>Beyder&amp;Co. Realty · Agent Office v9.0.0</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="canonical" href="https://office.beyderco.com/">
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -177,7 +177,6 @@ body.board-open #roster { max-height: calc(100% - var(--bar-h) - var(--board-h) 
 /* the agent card: as tall as what it holds, never past the bottom of the screen (or the task board) */
 #panel { position: fixed; z-index: 16; right: var(--gr); top: calc(var(--bar-h) + 14px); bottom: auto; max-height: calc(100vh - var(--bar-h) - 30px); width: 404px; display: flex; flex-direction: column; overflow: hidden; animation: slideIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1); }
 body.board-open #panel { max-height: calc(100vh - var(--bar-h) - var(--board-h) - 44px); }
-@keyframes slideIn { from { transform: translateX(14px); } to { transform: none; } }
 .p-head { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 18px 18px 14px 20px; border-bottom: 1px solid var(--rule); }
 .p-head .tile { width: 56px; height: 56px; border-radius: 14px; font-size: 22px; }
 .p-head h2 { margin: 0; font: 600 28px/1.05 var(--display); letter-spacing: 0.03em; }
@@ -616,5 +615,95 @@ body.board-open #panel { max-height:calc(100vh - var(--bar-h) - var(--board-h) -
 #ccNotice { margin:12px 0; font-size:13px; }
 .cc-history { margin-top:20px; border-top:1px solid #ddd; padding-top:14px; }
 .cc-history article { border-bottom:1px solid #ddd; padding:12px 0; font-size:13px; }
+.cc-history article.cc-stalled b { color:#a70008; }
 .p-compact-actions { flex-wrap:wrap; }
+/* 9.0 · the pointer label over working objects; the keyboard list */
+#pickTip { position:fixed; left:0; top:0; z-index:60; pointer-events:none; padding:5px 9px; border-radius:8px; background:rgba(10,10,10,.86); color:#fff; font:500 11.5px/1.2 var(--ui); white-space:nowrap; }
+#pickTip[hidden] { display:none; }
+#keysDialog { width:min(520px,calc(100vw - 24px)); border:1px solid #d8d6d3; border-radius:18px; padding:0 0 18px; font:14px var(--ui); color:#171717; }
+#keysDialog::backdrop { background:#17202b80; backdrop-filter:blur(8px); }
+#keysDialog header { display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid #ddd; }
+#keysDialog h2 { margin:0; font:500 24px var(--serif); }
+#keysDialog table { border-collapse:collapse; width:calc(100% - 44px); margin:10px 22px 0; }
+#keysDialog th, #keysDialog td { text-align:left; padding:7px 0; border-bottom:1px solid #eee; font-weight:400; }
+#keysDialog th { width:42%; white-space:nowrap; }
+#keysDialog kbd { display:inline-block; min-width:18px; padding:2px 6px; border:1px solid #cfcfcf; border-bottom-width:2px; border-radius:6px; font:600 12px var(--ui); text-align:center; background:#fafafa; }
+#keysDialog .g-meta { margin:12px 22px 0; }
+#keysDialog :focus-visible { outline:2px solid #a70008; outline-offset:3px; }
+/* 9.0 · a pill that cannot be cleared of its neighbours keeps only its dot */
+.bubble.crowd .nm, .bubble.crowd .st { display:none; }
+.bubble.crowd { padding-left:5px; padding-right:5px; }
+/* 9.0 · phones: the crew rail as a strip along the bottom, so the room keeps the screen's full width */
+@media (max-width:620px) {
+  #roster.collapsed { top:auto; bottom:calc(var(--fresh-h,26px) + 10px); left:10px; right:10px; width:auto; max-height:none; flex-direction:row; align-items:center; }
+  #roster.collapsed .rail-head { padding:0 2px 0 8px; flex:none; }
+  #roster.collapsed #rosterList { display:flex; flex-direction:row; align-items:center; gap:2px; overflow-x:auto; overflow-y:hidden; padding:6px 8px; scrollbar-width:none; }
+  #roster.collapsed #rosterList::-webkit-scrollbar { display:none; }
+  #roster.collapsed .row { padding:2px 3px; }
+  #roster.collapsed .rail-sep { padding:0 2px; align-self:stretch; border-left:1px solid #e3e3e3; margin-left:4px; }
+  #roster.collapsed #rosterToggle { transform:rotate(90deg); }
+}
+/* 9.0 round three · motion that reports a change, never decoration (every one is off under reduced motion) */
+@keyframes slideIn { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes panelOut { to { opacity: 0; transform: translateX(18px); } }
+#panel.leaving { animation: panelOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+@keyframes swapIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+#panel.swap #pHead, #panel.swap #pScroll { animation: swapIn 0.34s cubic-bezier(0.2, 0.7, 0.2, 1); }
+#panel .p-tools { display: flex; gap: 0; align-self: start; margin-right: -6px; }
+#panel .p-tools .closeX { width: 30px; height: 30px; color: var(--charcoal); }
+#panel .p-tools .closeX:hover { color: var(--ink); }
+/* a state change: the pill rings once in its new colour; the crew row's state word slides in */
+@keyframes stateRing { from { box-shadow: 0 0 0 0 var(--ring, var(--c, #0a0a0a)); } to { box-shadow: 0 0 0 12px transparent; } }
+.bubble.flip { animation: stateRing 0.7s ease-out; }
+.bubble.wait.flip { --ring: #a70008; }
+@keyframes dotPop { 0% { transform: scale(0.4); } 60% { transform: scale(1.35); } 100% { transform: none; } }
+.bubble.flip .dot { animation: dotPop 0.5s cubic-bezier(0.2, 0.7, 0.2, 1); }
+@keyframes chipIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.row.flip .chip { animation: chipIn 0.4s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.row.flip .tile { animation: stateRing 0.8s ease-out; --ring: var(--c); }
+/* the counts roll to a new value: up when it grows, down when it falls */
+.count .n { display: inline-block; }
+@keyframes rollUp { from { opacity: 0.3; transform: translateY(55%); } to { opacity: 1; transform: none; } }
+@keyframes rollDown { from { opacity: 0.3; transform: translateY(-55%); } to { opacity: 1; transform: none; } }
+.count .n.roll-up { animation: rollUp 0.42s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.count .n.roll-down { animation: rollDown 0.42s cubic-bezier(0.2, 0.7, 0.2, 1); }
+/* toasts: in from below, out to the left; one with Show takes the pointer */
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { to { opacity: 0; transform: translateX(-12px); } }
+.toast { animation: toastIn 0.32s cubic-bezier(0.2, 0.7, 0.2, 1); display: flex; align-items: center; gap: 12px; }
+.toast.out { animation: toastOut 0.26s ease-in forwards; }
+.toast.act { pointer-events: auto; }
+.toast button { flex: none; border: 1px solid #ffffff55; background: none; color: #fff; font: 600 12px var(--ui); padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+.toast button:hover, .toast button:focus-visible { background: #fff; color: var(--ink); outline: none; }
+/* going through what needs you: one quiet chip under the bar */
+#tourChip { position: fixed; z-index: 24; left: 50%; top: calc(var(--bar-h) + 12px); transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: min(640px, calc(100vw - 32px)); padding: 7px 8px 7px 14px; background: var(--ink); color: #fff; border-radius: 999px; box-shadow: var(--shadow); font: 500 12.5px/1.3 var(--ui); }
+#tourChip[hidden] { display: none; }
+#tourChip.in { animation: chipDrop 0.3s cubic-bezier(0.2, 0.7, 0.2, 1); }
+@keyframes chipDrop { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translateX(-50%); } }
+#tourChip .tc-n { color: #ffffffa0; flex: none; font-variant-numeric: tabular-nums; }
+#tourChip .tc-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tourChip button { flex: none; border: 0; background: #ffffff1c; color: #fff; font: 600 12px var(--ui); padding: 5px 10px; border-radius: 999px; cursor: pointer; }
+#tourChip button:hover, #tourChip button:focus-visible { background: #fff; color: var(--ink); outline: none; }
+#tourChip kbd { font: 600 10px var(--ui); opacity: 0.7; margin-left: 3px; }
+#tourChip .tc-x { width: 26px; padding: 5px 0; font-size: 15px; line-height: 1; }
+/* while you were away */
+#awayCard { position: fixed; z-index: 26; left: 50%; top: calc(var(--bar-h) + 18px); transform: translateX(-50%); box-sizing: border-box; width: min(520px, calc(100vw - 24px)); max-height: calc(100vh - var(--bar-h) - 60px); overflow: auto; padding: 18px 20px 14px; background: #fff; border: 1px solid var(--rule); border-radius: 16px; box-shadow: 0 24px 70px #0a0a0a2e; font: 13px/1.45 var(--ui); }
+#awayCard[hidden] { display: none; }
+#awayCard.in { animation: chipDrop 0.36s cubic-bezier(0.2, 0.7, 0.2, 1); }
+#awayCard.out { animation: awayOut 0.24s ease-in forwards; }
+@keyframes awayOut { to { opacity: 0; transform: translate(-50%, -8px); } }
+#awayCard header { position: relative; padding-right: 34px; margin-bottom: 8px; }
+#awayCard header .closeX { position: absolute; right: -8px; top: -6px; }
+#awayCard .eyebrow { margin: 0 0 4px; }
+#awayCard h2 { margin: 0; font: 500 24px var(--serif); }
+#awayCard .aw-span { margin: 2px 0 0; color: var(--charcoal); font-size: 12px; }
+#awayCard .aw-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 10px 0; border-top: 1px solid #ececec; }
+#awayCard .aw-row span { grid-column: 1; color: var(--charcoal); font-size: 12px; overflow-wrap: anywhere; }
+#awayCard .aw-row .btn { grid-column: 2; grid-row: 1 / span 2; }
+#awayCard .aw-row.hot b { color: var(--crimson); }
+#awayCard .aw-log { list-style: none; margin: 6px 0 0; padding: 8px 0 0; border-top: 1px solid #ececec; }
+#awayCard .aw-log button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 5px 6px; margin: 0 -6px; border-radius: 8px; font: 12px/1.4 var(--ui); color: var(--ink); cursor: pointer; }
+#awayCard .aw-log button:hover { background: var(--fog); }
+#awayCard .aw-log time { color: var(--charcoal); font-variant-numeric: tabular-nums; }
+@media (max-width: 620px) { #tourChip { top: auto; bottom: calc(var(--fresh-h, 26px) + 76px); } }
 </style>

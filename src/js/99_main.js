@@ -17,6 +17,7 @@ const loadImage = src => new Promise(res => {
 
 async function boot() {
   await loadFonts();
+  const bootHash = location.hash; // read before the boot views rewrite the address bar
   // the client's own mark: the pin on every chest, the logo wall (the rugs are plain white wool)
   const [letters, amp, tile] = await Promise.all([loadImage(ASSETS.logoLetters), loadImage(ASSETS.logoAmp), loadImage(ASSETS.logoTile)]);
   LOGO.letters = letters;
@@ -24,6 +25,7 @@ async function boot() {
   if (tile) makePinTexture(tile);
   AMP_IMG = amp;
   buildRoom({ logoLetters: letters, logoAmp: amp });
+  scene.add(buildTerrace());
   buildNav();
   seedOffice();
   VIEW.init();
@@ -32,7 +34,11 @@ async function boot() {
   controls.set(viewOf('desks')); // the crew, large enough to read; Overview is one click away
   UI.markView('desks');
   UI._booted = true;
+  RIPPLE.init();
   OfficeExperience.init();
+  XRAY.patchTree(scene.getObjectByName('room'));
+  if (TERRACE.group) XRAY.patchTree(TERRACE.group);
+  for (const s of WORLD.stations) XRAY.patchTree(s.group);
   const preferred=OfficeExperience.preferences.homeView;
   if(VIEWS[preferred]) { controls.set(viewOf(preferred)); UI.markView(preferred); }
   refreshFreshness();
@@ -47,11 +53,13 @@ async function boot() {
   if (params.get('board') === '1') UI.toggleBoard(true);
   // bookmarkable views by hash (the only part of a link an artifact carries): #desks #boardroom #door #board
   const fromHash = initial => {
-    const h = location.hash.slice(1);
+    const h = (initial ? bootHash : location.hash).slice(1);
     if (['overview', 'hudson', 'desks', 'boardroom', 'door', 'datawall', 'hotsheet', 'hotlist', 'server', 'sculpture', 'lounge', 'study', 'saved'].includes(h) && VIEWS[h]) {
       if (initial) controls.set(viewOf(h)), UI.markView(h);
       else UI.view(h);
     } else if (h === 'board') UI.toggleBoard(true);
+    else if (h.startsWith('agent/') && OFFICE_STATE.agents[h.slice(6)]) { if (UI.selected !== h.slice(6)) UI.select(h.slice(6)); }
+    else if (h.startsWith('screen/')) UI.openScreen(h.slice(7));
   };
   fromHash(true);
   window.addEventListener('hashchange', () => fromHash(false));
@@ -89,7 +97,10 @@ async function boot() {
     for (const s of WORLD.stations) s.update(motionDt, t);
     updateRoom(motionDt, t);
     updateSky(motionDt);
+    updateTerrace();
     VIEW.update(dt, t);
+    XRAY.update(dt);
+    RIPPLE.update(dt);
     heldLate(motionDt); // anything a robot holds goes where its palms are now (after the IK and the tweens)
     renderer.render(scene, camera);
     OFFICE_RUNTIME.frames++;
@@ -103,7 +114,7 @@ async function boot() {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__office = { WORLD, controls, camera, THREE, ROOM, ROOM_OBJ, UI, VIEW, SIM, MOVE, AMB, OFFICE_STATE, SKY, NAV, DESTINATIONS, COLLIDERS, scene, renderer, Figure, figureSpec, DESK, HIGH5, blockedAt, INCIDENT, SEATED_MODES, FIELD: typeof FIELD !== "undefined" ? FIELD : null };
+  window.__office = { WORLD, controls, camera, THREE, ROOM, ROOM_OBJ, UI, VIEW, SIM, MOVE, AMB, OFFICE_STATE, SKY, NAV, DESTINATIONS, COLLIDERS, scene, renderer, ATTENTION, AWAY, RIPPLE, Figure, figureSpec, DESK, HIGH5, blockedAt, INCIDENT, SEATED_MODES, FIELD: typeof FIELD !== "undefined" ? FIELD : null };
 }
 boot().catch(err => {
   OFFICE_RUNTIME.errors++;

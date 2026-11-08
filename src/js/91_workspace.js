@@ -44,6 +44,11 @@
     OFFICE_STATE.order.forEach(id=>{const a=OFFICE_STATE.agents[id];if(a)entries.push({id:'agent:'+id,label:a.name,detail:a.specialty,group:'Agents',run:()=>{close();UI.select(id);}});});
     if(window.OfficeExperience)entries.push({id:'experience',label:'Controls and source health',group:'Office',run:()=>{close();window.OfficeExperience.open();}});
     entries.push({id:'board',label:'Task board',group:'Office',run:()=>{close();UI.toggleBoard(true);}});
+    entries.push({id:'keys',label:'Keyboard shortcuts',detail:'Every key the office answers (?)',group:'Office',run:()=>{close();UI.shortcuts();}});
+    entries.push({id:'attention',label:'Go through what needs you',detail:'Each open decision and fix in turn (A)',group:'Office',run:()=>{close();ATTENTION.start();}});
+    entries.push({id:'link',label:'Copy a link to what is open',detail:'The agent, screen or view on screen now (L)',group:'Office',run:()=>{close();UI.copyLink();}});
+    // every open decision and every fix, by its own words: type a client's name or a job's and go straight to it
+    if(typeof ATTENTION!=='undefined')ATTENTION.items().forEach((it,i)=>entries.push({id:'need:'+it.key,label:it.title,detail:it.kind+(it.agent?' · '+OFFICE_STATE.agents[it.agent].name:''),group:'Needs you',run:()=>{close();ATTENTION.go(i);}}));
     return entries.filter(c=>includes([c.label,c.detail,c.group],W.query));
   }
 
@@ -54,7 +59,7 @@
     const statusValue=v=>['ok','quiet','starting','missing','stale','error','auth','rate','attention','live','awaiting','partial','unconfigured'].includes(v)?v:'unknown';
     const counts = obj => Object.fromEntries(Object.entries(obj||{}).filter(([k,v])=>['listings','underContract','closing30','closedYTD','offers','offMarket','buyerContracts','system','overdue','approval','today','appointment','lead','engaged','reengaged','slipping'].includes(k)&&numeric(v)!==null));
     return {schema:'bco.agent-office.operational-snapshot/v1',generatedAt:new Date().toISOString(),timeZone:ET,testData:test(),
-      version:{page:'8.9.0',bridge:/^\d+\.\d+\.\d+$/.test(br.version||'')?br.version:null,build:/^[a-f0-9]{20}$/.test(window.BCO_BUILD||'')?window.BCO_BUILD:null},
+      version:{page:'9.0.0',bridge:/^\d+\.\d+\.\d+$/.test(br.version||'')?br.version:null,build:/^[a-f0-9]{20}$/.test(window.BCO_BUILD||'')?window.BCO_BUILD:null},
       connection:['live','offline','simulated','standby'].includes(s.meta.feed)?s.meta.feed:'unknown',
       sources:Object.fromEntries(feedNames.map(k=>[k,{state:statusValue(br.feeds?.[k]?.state),asOf:iso(br.feeds?.[k]?.asOf)}])),
       panels:Object.fromEntries(Object.entries(p).filter(([k])=>['today','pipeline','buyers','feed','highlights','needs'].includes(k)).map(([k,v])=>[k,{state:state(v),asOf:iso(v.asOf)}])),

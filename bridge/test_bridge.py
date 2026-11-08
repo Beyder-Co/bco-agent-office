@@ -205,6 +205,15 @@ class HotSheet(unittest.TestCase):
         self.assertEqual(msg["status"], "stale")
         self.assertIn("Oct 28", msg["note"])
 
+    def test_a_day_old_scheduled_pull_says_its_age(self):
+        doc = self.v1_doc(generated_at="2026-11-01T12:10:00+00:00")  # the 7:05 AM pull
+        msg = B.build_hotsheet(doc, {}, set(), datetime(2026, 11, 1, 19, 10, tzinfo=timezone.utc), None)
+        self.assertEqual(msg["status"], "live")  # within its schedule: not stale
+        self.assertEqual(msg["cadence"], "scheduled")
+        self.assertTrue(msg["note"].startswith("Scheduled pull · published Nov 1"))
+        fresh = B.build_hotsheet(doc, {}, set(), datetime(2026, 11, 1, 13, 0, tzinfo=timezone.utc), None)
+        self.assertNotIn("note", fresh)
+
     def test_other_layouts(self):
         flat = {"generated_at": "2026-11-01T13:00:00Z", "listings": [
             {"change_type": "Price Change", "address": "46 Example Road, Alpine", "price": "$4,250,000", "previous_price": 4500000, "mls_number": "123"},
@@ -766,6 +775,36 @@ class Feed(unittest.TestCase):
         self.assertEqual([o["id"] for o in out], ["sys-njmls", "sys-job-com.beyderco.sms-reconcile"])
         self.assertIn("NJMLS LOGIN", out[0]["title"])
 
+    def test_same_error_is_one_need(self):
+        same = "Scrape failed: selector #results not found after 30 s"
+        fleet = {"jobs": [
+            {"label": "com.beyderco.skiptrace-scan", "name": "Skiptrace scan", "agent": "scout", "ok": False, "summary": same, "lastAt": B.iso_z(NOW - timedelta(minutes=5))},
+            {"label": "com.beyderco.njmls-matrix", "name": "NJMLS Matrix intake", "agent": "scout", "ok": False, "summary": same.replace("30", "45"), "lastAt": B.iso_z(NOW)},
+            {"label": "com.beyderco.sms-reconcile", "name": "SMS reconcile", "agent": "automations", "ok": False, "summary": "3 rows unmatched", "lastAt": B.iso_z(NOW)}]}
+        for j in fleet["jobs"]: j["failureCode"], j["recoveryStep"] = B.job_failure(j)
+        out = B.system_needs({}, fleet, None)
+        grouped = [o for o in out if o["id"].startswith("sys-cause-")]
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["labels"], ["com.beyderco.skiptrace-scan", "com.beyderco.njmls-matrix"])
+        self.assertTrue(grouped[0]["title"].startswith("2 jobs fail with the same error"))
+        self.assertIn("sys-job-com.beyderco.sms-reconcile", [o["id"] for o in out])
+        self.assertNotIn("sys-job-com.beyderco.skiptrace-scan", [o["id"] for o in out])
+
+    def test_stalled_handoffs_are_reported_never_resent(self):
+        now = NOW.timestamp()
+        rows = [{"id": "a", "state": "queued", "updatedAt": B.iso_z(NOW - timedelta(hours=52))},
+                {"id": "b", "state": "queued", "updatedAt": B.iso_z(NOW - timedelta(hours=7))},
+                {"id": "c", "state": "queued", "updatedAt": B.iso_z(NOW - timedelta(minutes=30))},
+                {"id": "d", "state": "received", "updatedAt": B.iso_z(NOW - timedelta(hours=60))}]
+        st = B.stalled_handoffs(rows, now)
+        self.assertEqual([r["id"] for r in st], ["a", "b"])
+        self.assertEqual(st[0]["queuedSeconds"], 52 * 3600)
+        need = [o for o in B.system_needs({}, {}, None, rows, now) if o["id"] == "sys-handoff-stalled"]
+        self.assertEqual(len(need), 1)
+        self.assertIn("2 handoffs", need[0]["title"]); self.assertIn("52 h", need[0]["title"])
+        self.assertEqual(rows[0]["state"], "queued")  # derived only: the ledger row is untouched
+        self.assertEqual(B.system_needs({}, {}, None, rows[2:], now), [])
+
 
 class Fleet(unittest.TestCase):
     LISTING = ("PID\tStatus\tLabel\n-\t0\tcom.beyderco.monitor\n4242\t0\tcom.beyderco.realscout.intake\n"
@@ -1272,7 +1311,7 @@ class FreshnessV84(unittest.TestCase):
         self.assertEqual(h.feeds['realscout']['state'],'stale')
 
     def test_server_heartbeat_reports_release(self):
-        meta=B.Hub().meta();self.assertEqual(meta['pageVersion'],'8.9.0');self.assertIn('serverTime',meta)
+        meta=B.Hub().meta();self.assertEqual(meta['pageVersion'],'9.0.0');self.assertIn('serverTime',meta)
 
 
 class ReleaseV84(unittest.TestCase):
@@ -1549,9 +1588,10 @@ class BackendV85(unittest.TestCase):
         d=h.diagnostics();self.assertNotIn('TEST',json.dumps(d));self.assertIsNone(d['feeds']['fub']['asOf'])
         for n in range(140):h.set_feed('fub','error' if n%2 else 'ok',B.iso_z(now),'TEST hidden note')
         self.assertEqual(len(h.transitions),120)
-        h.set_feed('fub','ok',B.iso_z(now));h.feed_view(now+timedelta(seconds=121))
+        # past both the day (120 s) and night (600 s) limits, so the result does not depend on the hour the suite runs
+        h.set_feed('fub','ok',B.iso_z(now));h.feed_view(now+timedelta(seconds=601))
         self.assertEqual([t for t in h.transitions if t['feed']=='fub'][-1]['reason'],'check_overdue')
-        before=len(h.transitions);h.feed_view(now+timedelta(seconds=122));self.assertEqual(len(h.transitions),before)
+        before=len(h.transitions);h.feed_view(now+timedelta(seconds=602));self.assertEqual(len(h.transitions),before)
         self.assertNotIn('note',d['feeds']['fub'])
 
     def test_diagnostics_rejects_unknown_feed_and_runtime_identity_text(self):
@@ -1741,7 +1781,7 @@ class BackendHTTPV85(unittest.TestCase):
     def test_diagnostics_and_health_are_private_uncached_and_truthful(self):
         health=self.request('/health');data=json.loads(health[2]);self.assertTrue(data['ok']);self.assertFalse(data['readiness']['ready'])
         diag=self.request('/diagnostics');d=json.loads(diag[2]);self.assertEqual(diag[1]['Cache-Control'],'no-store');self.assertIn('transitions',d)
-        self.assertNotIn('snapshot',d);self.assertNotIn('note',json.dumps(d));self.assertEqual(d['version'],'1.6.0')
+        self.assertNotIn('snapshot',d);self.assertNotIn('note',json.dumps(d));self.assertEqual(d['version'],'1.7.0')
         self.assertEqual(self.request('/diagnostics',headers={'Host':'evil.example'})[0],403)
 
 
