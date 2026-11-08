@@ -1482,8 +1482,6 @@ function buildStudy(room) {
   slab.receiveShadow = true;
   slab.userData.noCollide = true;
   g.add(slab);
-  const edge = new THREE.Mesh(new THREE.RingGeometry(1, 1, 4), MAT.alu); // replaced below by four hairlines
-  edge.visible = false;
   const hair = 0.012;
   for (const [x, z, w, d] of [[(I.x0 + I.x1) / 2, I.z0, I.x1 - I.x0 + hair, hair], [(I.x0 + I.x1) / 2, I.z1, I.x1 - I.x0 + hair, hair], [I.x0, (I.z0 + I.z1) / 2, hair, I.z1 - I.z0], [I.x1, (I.z0 + I.z1) / 2, hair, I.z1 - I.z0]]) {
     const h = box(w, 0.004, d, MAT.alu, x, 0.004, z);

@@ -19,7 +19,7 @@ function stateWords(a) {
   }
   if (DESTINATIONS[a.location]) return { cls: 'idle', text: 'Away', long: DESTINATIONS[a.location].label };
   switch (a.status) {
-    case 'WORKING': return { cls: 'work', text: a.activity === 'browsing' ? 'Browsing…' : 'Coding…' };
+    case 'WORKING': return { cls: 'work', text: a.zone === 'personal' ? (a.activity === 'browsing' ? 'Reading…' : 'Writing…') : a.activity === 'browsing' ? 'Browsing…' : 'Coding…' }; // the study's pair read and write; they never code
     case 'THINKING': return a.stuck ? { cls: 'think stuck', text: 'Stuck', long: 'Stuck · retrying' } : { cls: 'think', text: 'Thinking…' };
     case 'DONE': return { cls: 'done', text: 'Done' };
     default: return { cls: 'idle', text: 'Idle' };
@@ -614,6 +614,7 @@ const UI = {
     const nextHtml = queued.length ? `<p class="p-next"><span class="eyebrow">Up next</span><span>${esc(queued[0].title)}${queued.length > 1 ? ` <span class="g-meta">+${queued.length - 1}</span>` : ''}</span></p>` : '';
     const ownerRows = (OFFICE_STATE.meta.bridge?.commands?.owners || []).filter(r=>a.id==='automations' ? r.workflow==='desktop:fub-sms-flush-local' : a.id==='scout' ? /njmls|seed-intake/.test(r.workflow) : a.id==='publisher' ? /content|journal/.test(r.workflow) : false);
     const ownersHtml=ownerRows.length ? `<h3 class="eyebrow">Codex schedules</h3><ul class="p-jobs">${ownerRows.map(r=>`<li><span class="pj-name">${esc(r.name)}</span><span>${esc(r.status.toLowerCase())}</span></li>`).join('')}</ul>` : '';
+    const personal = a.zone === 'personal'; // the study's pair: no coordinator, a runtime instead
     const about = `<details class="p-about"${this.aboutOpen ? ' open' : ''}><summary>About ${esc(nm)}</summary>
         <p class="p-text">${esc(a.role || a.specialty)}</p>
         <dl class="pa-facts"><div><dt>${personal ? 'Runtime' : 'Connected owner'}</dt><dd>${esc(a.engine)}</dd></div>${personal ? '<div><dt>Scope</dt><dd>Personal only · outside Beyder&amp;Co. · nothing sent, booked or paid without Igor</dd></div>' : ''}${a.systems.length ? `<div><dt>Systems</dt><dd>${a.systems.map(esc).join(' · ')}</dd></div>` : ''}</dl>
@@ -622,7 +623,6 @@ const UI = {
       </details>`;
     const detailLabel = gates.length ? 'Review & respond' : failing ? 'View failure details' : 'Details';
     // the study's pair: no coordinator, so no Ask Crimson; the runtime's real state instead, never a dead control
-    const personal = a.zone === 'personal';
     const pf = OFFICE_STATE.meta.bridge?.feeds?.personal;
     const runtimeText = !personal ? '' : !live ? 'TEST sample · no personal runtime is connected'
       : pf?.state === 'ok' || pf?.state === 'attention' ? `Personal runtime · ${pf.note || 'connected'}`

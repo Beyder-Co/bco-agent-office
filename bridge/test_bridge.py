@@ -1214,7 +1214,7 @@ class FreshnessV84(unittest.TestCase):
         self.assertEqual(h.feeds['realscout']['state'],'stale')
 
     def test_server_heartbeat_reports_release(self):
-        meta=B.Hub().meta();self.assertEqual(meta['pageVersion'],'8.8.1');self.assertIn('serverTime',meta)
+        meta=B.Hub().meta();self.assertEqual(meta['pageVersion'],'8.9.0');self.assertIn('serverTime',meta)
 
 
 class ReleaseV84(unittest.TestCase):
