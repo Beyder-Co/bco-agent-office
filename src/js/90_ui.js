@@ -604,29 +604,31 @@ const UI = {
         ${gates.length > shown.length ? `<button type="button" class="linkbtn p-more" data-act="needs-all">Show all ${gates.length}</button>` : ''}` : '';
     // the Studio jobs it runs: last run (✓ or ✕) and next
     const jobs = live && OFFICE_STATE.fleet ? (OFFICE_STATE.fleet.jobs || []).filter(j => j.agent === a.id) : [];
+    const personal = a.zone === 'personal'; // the study's pair: no coordinator, a runtime instead; Crimson's repair path never reaches them
+    const pf = OFFICE_STATE.meta.bridge?.feeds?.personal;
+    const runtimeText = !personal ? '' : !live ? 'TEST sample · no personal runtime is connected'
+      : pf?.state === 'ok' || pf?.state === 'attention' ? `Personal runtime · ${pf.note || 'connected'}`
+      : pf?.state === 'stale' ? 'Personal runtime · last check overdue'
+      : pf?.state === 'missing' ? `Personal runtime · ${pf.note || 'configured, not running'}` : 'Personal runtime · not connected';
     const jobRow = j => {
       const failed = j.ok === false;
+      const paused = failed && (OFFICE_STATE.meta.bridge?.commands?.repairPaused || []).includes(j.label); // the bridge stopped repeating automatic repairs for this job today
       const last = j.running ? 'running now' : j.lastAt ? `${whenShort(j.lastAt)} ${failed ? '✕' : j.ok ? '✓' : ''}` : '—';
       return `<li class="${failed ? 'fail' : ''}${j.running ? ' run' : ''}"><span class="pj-name">${esc(j.name)}</span><span class="pj-last">${esc(last.trim())}</span><span class="pj-next">${j.next ? 'next ' + esc(whenShort(j.next)) : ''}</span>
-          ${j.summary ? `<span class="${failed ? 'pj-why' : 'pj-note'}">${esc(j.summary)}</span>` : ''}${failed ? `<button type="button" class="linkbtn" data-office-command="repair" data-source="${esc(j.label)}" data-agent="${esc(a.id)}">Ask Crimson to repair</button>` : ''}</li>`;
+          ${j.summary ? `<span class="${failed ? 'pj-why' : 'pj-note'}">${esc(j.summary)}</span>` : ''}${paused ? '<span class="pj-why">Repeat failure · automatic repair paused for today; needs a look</span>' : ''}${failed && !personal ? `<button type="button" class="linkbtn" data-office-command="repair" data-source="${esc(j.label)}" data-agent="${esc(a.id)}">Ask Crimson to repair</button>` : failed && j.recoveryStep ? `<span class="pj-note">${esc(j.recoveryStep)}</span>` : ''}</li>`;
     };
     const jobsHtml = jobs.length ? `<h3 class="eyebrow">On the Studio</h3><ul class="p-jobs">${jobs.map(jobRow).join('')}</ul>` : '';
     const nextHtml = queued.length ? `<p class="p-next"><span class="eyebrow">Up next</span><span>${esc(queued[0].title)}${queued.length > 1 ? ` <span class="g-meta">+${queued.length - 1}</span>` : ''}</span></p>` : '';
     const ownerRows = (OFFICE_STATE.meta.bridge?.commands?.owners || []).filter(r=>a.id==='automations' ? r.workflow==='desktop:fub-sms-flush-local' : a.id==='scout' ? /njmls|seed-intake/.test(r.workflow) : a.id==='publisher' ? /content|journal/.test(r.workflow) : false);
     const ownersHtml=ownerRows.length ? `<h3 class="eyebrow">Codex schedules</h3><ul class="p-jobs">${ownerRows.map(r=>`<li><span class="pj-name">${esc(r.name)}</span><span>${esc(r.status.toLowerCase())}</span></li>`).join('')}</ul>` : '';
-    const personal = a.zone === 'personal'; // the study's pair: no coordinator, a runtime instead
     const about = `<details class="p-about"${this.aboutOpen ? ' open' : ''}><summary>About ${esc(nm)}</summary>
         <p class="p-text">${esc(a.role || a.specialty)}</p>
-        <dl class="pa-facts"><div><dt>${personal ? 'Runtime' : 'Connected owner'}</dt><dd>${esc(a.engine)}</dd></div>${personal ? '<div><dt>Scope</dt><dd>Personal only · outside Beyder&amp;Co. · nothing sent, booked or paid without Igor</dd></div>' : ''}${a.systems.length ? `<div><dt>Systems</dt><dd>${a.systems.map(esc).join(' · ')}</dd></div>` : ''}</dl>
+        <dl class="pa-facts"><div><dt>${personal ? 'Runtime' : 'Connected owner'}</dt><dd>${esc(personal ? runtimeText : a.engine)}</dd></div>${personal ? '<div><dt>Scope</dt><dd>Personal only · outside Beyder&amp;Co. · nothing sent, booked or paid without Igor</dd></div>' : ''}${a.systems.length ? `<div><dt>Systems</dt><dd>${a.systems.map(esc).join(' · ')}</dd></div>` : ''}</dl>
         ${a.delivered.length ? `<span class="eyebrow">Delivered</span><ul class="delivered">${a.delivered.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
         ${a.held.length ? `<span class="eyebrow">Held</span><ul class="delivered held">${a.held.map(h => `<li><span>${esc(h.need)} <span class="g-meta">· held ${fmtTime(new Date(h.at))}</span></span></li>`).join('')}</ul>` : ''}
       </details>`;
     const detailLabel = gates.length ? 'Review & respond' : failing ? 'View failure details' : 'Details';
-    // the study's pair: no coordinator, so no Ask Crimson; the runtime's real state instead, never a dead control
-    const pf = OFFICE_STATE.meta.bridge?.feeds?.personal;
-    const runtimeText = !personal ? '' : !live ? 'TEST sample · no personal runtime is connected'
-      : pf?.state === 'ok' || pf?.state === 'attention' ? `Personal runtime · ${pf.note || 'connected'}`
-      : pf?.state === 'missing' ? `Personal runtime · ${pf.note || 'configured, not running'}` : 'Personal runtime · not connected';
+    // no Ask Crimson for the study: the runtime's real state instead, never a dead control
     const askHtml = personal ? `<span class="p-runtime" title="Configured on the Studio in config.json → personal_runtime">${esc(runtimeText)}</span>`
       : `<button type="button" class="btn ink" data-office-command="instruction" data-agent="${esc(a.id)}">${a.id === 'crimson' ? 'Tell Crimson' : 'Ask Crimson'}</button>`;
     const escalated=a.id==='crimson' && typeof OFFICE_COMMAND_UI!=='undefined' ? OFFICE_COMMAND_UI.rows.filter(r=>r.state==='needs_igor') : [];

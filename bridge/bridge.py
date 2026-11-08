@@ -2154,7 +2154,7 @@ class Hub:
             ticker = dict(self.snapshot.get("ticker") or {})
             hot = dict(self.snapshot.get("hotsheet") or {})
         thresholds = {"fub":600 if is_night(now) else 120, "realscout":600 if is_night(now) else 120,
-                      "fleet":45, "rates":1800, "hotsheet":None, "personal":None}
+                      "fleet":45, "rates":1800, "hotsheet":None, "personal":45}
         for key, item in feeds.items():
             seconds = thresholds.get(key)
             at = parse_iso(item.get("asOf"))
@@ -2221,12 +2221,16 @@ class Hub:
             if not c.send_json(msg):
                 self.remove(c)
 
-    def set_feed(self, name: str, state: str, as_of=None, note=None, failures: int = 0) -> None:
+    def set_feed(self, name: str, state: str, as_of=None, note=None, failures: int = 0, quiet: bool = False) -> None:
+        """quiet: a producer that reports every tick refreshes asOf without a broadcast when nothing else changed."""
         if name not in self.feeds:
             raise ValueError("unknown feed")
         state = state if state in {"starting","ok","quiet","attention","stale","error","auth","rate","missing","partial","unconfigured"} else "error"
         with self.lock:
+            prior = self.feeds[name]
+            unchanged = quiet and (prior.get("state"), prior.get("note"), prior.get("failures", 0)) == (state, note, failures)
             self.feeds[name] = {"state": state, "asOf": as_of, "note": note, "failures": failures if isinstance(failures,int) and 0 <= failures <= 1000000000 else 0}
+        if unchanged: return
         self.update("bridge", self.meta())
 
     def messages(self) -> list:
@@ -2449,6 +2453,8 @@ def command_digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',',':')).encode()).hexdigest()
 
 
+REPAIR_DAILY_LIMIT = 2  # automatic repair handoffs per job label per 24 h
+
 class OfficeCommands:
     """One reviewed handoff, durable before dispatch. Uncertain submissions never retry automatically."""
     def __init__(self, hub, path=None, runner=None, clock=None):
@@ -2460,6 +2466,7 @@ class OfficeCommands:
         self.prepared = {}
         self.observing_since = None
         self.owner_cache = (0,[])
+        self.repair_paused = set()  # labels whose automatic repairs hit the daily limit; shown, not retried
 
     def enabled(self):
         return self.runner is not None or (Path(__file__).resolve() == (APP_DIR/'bridge.py').resolve()
@@ -2507,7 +2514,7 @@ class OfficeCommands:
             self.owner_cache=(time.monotonic(),office_owner_bindings())
         available=self.enabled()
         return {'available':available,'coordinatorId':COORDINATOR_ID,'autoRepair':available,
-                'mode':'existing_chat_queue','roles':ROLE_CATALOG,'owners':self.owner_cache[1]}
+                'mode':'existing_chat_queue','roles':ROLE_CATALOG,'owners':self.owner_cache[1],'repairPaused':sorted(self.repair_paused)}
 
     def context(self, request):
         mode = request.get('mode')
@@ -2719,6 +2726,13 @@ class OfficeCommands:
                 if job.get('ok') is not False or job.get('running') or job.get('lastFrom') != 'record' or not stamp or not self.observing_since < stamp.timestamp() <= self.clock()+5: continue
                 # Completing a repair is not a new failure episode. Only an intervening healthy source resets it.
                 if last and last['state'] != 'resolved_by_source': continue
+                # A job that fails, recovers and fails again all day is not repaired again and again: two automatic
+                # repairs per label per day, then it waits for a look (Igor's rule: no repair loops).
+                day_ago = self.clock() - 86400
+                recent = [r for r in prior if r.get('automatic') and (parse_iso(r.get('at')) or datetime.fromtimestamp(0,timezone.utc)).timestamp() > day_ago]
+                if len(recent) >= REPAIR_DAILY_LIMIT:
+                    self.repair_paused.add(key); continue
+                self.repair_paused.discard(key)
                 active = [r for r in self.rows() if r.get('automatic') and r['state'] in ('submitting','queued','received','working','attempt_failed')]
                 if len(active)>=3: continue
                 request = {'mode':'repair','sourceId':key,'agentId':job['agent'],'decision':'repair','message':'Diagnose this failure and repair it within the existing authorized scope. Verify using ordinary results; do not replay or pause business jobs.'}
@@ -2928,7 +2942,7 @@ FLEET_PREFIX = "com.beyderco."
 ADDITIONAL_NATIVE = {"com.igorbeyder.matrix-keepalive", "com.igorbeyder.content.plan"}
 
 def office_native_label(label):
-    return isinstance(label,str) and (label.startswith(FLEET_PREFIX) or label in ADDITIONAL_NATIVE or label.startswith(PERSONAL_PREFIX))
+    return isinstance(label,str) and (label.startswith(FLEET_PREFIX) or label in ADDITIONAL_NATIVE or (label.startswith(PERSONAL_PREFIX) and CFG["personal_runtime"] is not None))
 
 
 def personal_agent_for(label: str) -> tuple:
@@ -3313,7 +3327,7 @@ class FleetWatcher:
     def _load_schedules(self) -> None:
         import plistlib
         out, logs = {}, {}
-        for p in sorted(set(self.agents_dir.glob(FLEET_PREFIX + "*.plist")) | set(self.agents_dir.glob(PERSONAL_PREFIX + "*.plist")) | {self.agents_dir/(label+".plist") for label in ADDITIONAL_NATIVE if (self.agents_dir/(label+".plist")).is_file()}):
+        for p in sorted(set(self.agents_dir.glob(FLEET_PREFIX + "*.plist")) | (set(self.agents_dir.glob(PERSONAL_PREFIX + "*.plist")) if CFG["personal_runtime"] is not None else set()) | {self.agents_dir/(label+".plist") for label in ADDITIONAL_NATIVE if (self.agents_dir/(label+".plist")).is_file()}):
             try:
                 with open(p, "rb") as fh:
                     pl = plistlib.load(fh)
@@ -3362,8 +3376,10 @@ class FleetWatcher:
         if not live:
             self.hub.set_feed("fleet", "missing", None, "No com.beyderco jobs loaded on this Mac")
             return fleet
-        self.hub.set_feed("fleet", "ok" if not fleet["failing"] else "attention", iso_z(now),
-                          f"{len(listing)} jobs · {fleet['running']} running · {fleet['failing']} reporting a failure")
+        biz = [j for j in fleet["jobs"] if not j["label"].startswith(PERSONAL_PREFIX)]  # the study's jobs report through the personal feed, never here
+        biz_failing = sum(1 for j in biz if j["ok"] is False)
+        self.hub.set_feed("fleet", "ok" if not biz_failing else "attention", iso_z(now),
+                          f"{sum(1 for j in biz if j['loaded'])} jobs · {sum(1 for j in biz if j['running'])} running · {biz_failing} reporting a failure")
         self.hub.update("fleet", {"type": "fleet", "jobs": fleet["jobs"], "doneToday": fleet["doneToday"],
                                   "asOf": iso_z(now)})
         for agent, st in fleet["agents"].items():
@@ -3402,7 +3418,7 @@ class FleetWatcher:
         else:
             failing = sum(1 for j in jobs if j["ok"] is False)
             self.hub.set_feed("personal", "attention" if failing else "ok", iso_z(now),
-                              f"{rt['model']} · {len(jobs)} personal jobs · {sum(1 for j in jobs if j['running'])} running · {failing} reporting a failure", failing)
+                              f"{rt['model']} · {len(jobs)} personal jobs · {sum(1 for j in jobs if j['running'])} running · {failing} reporting a failure", failing, quiet=True)
 
     def run(self, stop: threading.Event) -> None:
         while not stop.is_set():
@@ -3411,6 +3427,7 @@ class FleetWatcher:
             except Exception as exc:  # noqa: BLE001 - the display keeps the last state
                 log.exception("fleet tick failed: %s", type(exc).__name__)
                 self.hub.set_feed("fleet", "error", None, "Could not read the job list")
+                if CFG["personal_runtime"] is not None: self.hub.set_feed("personal", "error", None, "Could not read the job list")
             stop.wait(15)
 
 
@@ -3863,7 +3880,7 @@ def system_needs(hotsheet: dict, fleet: dict, fub_note: str = None) -> list:
             at = parse_iso(j.get("lastAt"))
             out.append({"id": f"sys-job-{j['label']}", "agent": j.get("agent"),
                         "title": f"{j['name']} reported a problem", "detail": " · ".join(v for v in (j.get("failureCode"),j.get("summary"),j.get("recoveryStep")) if v), "at":j.get("lastAt"),
-                        "when": fmt_time(at) if at else "", "link": "https://command.beyderco.com"})
+                        "when": fmt_time(at) if at else "", "link": None if j["label"].startswith(PERSONAL_PREFIX) else "https://command.beyderco.com"})
     return out
 
 

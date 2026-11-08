@@ -265,7 +265,8 @@ function addAgent(spec) {
   a.detail = 'Arriving';
   a.instruction = spec.instruction || '';
   OFFICE_STATE.agents[id] = a;
-  OFFICE_STATE.order.push(id);
+  const firstPersonal = OFFICE_STATE.order.findIndex(i => OFFICE_STATE.agents[i].zone === 'personal'); // the crew stay before the study (roster divider, 1–0 shortcuts)
+  if (firstPersonal < 0) OFFICE_STATE.order.push(id); else OFFICE_STATE.order.splice(firstPersonal, 0, id);
   pushLog(id, 'Display agent added for this browser session', 'system');
   BUS.emit('add', a);
   return a;
@@ -354,7 +355,7 @@ const pushHotSheet = row => setHotSheet({ rows: [row], replace: false });
 
 /** Replace the ticker's items. kind ∈ view | save | inquiry | lead | rate; text is ready to show; at is ISO. */
 const TICKER_KINDS = ['view', 'save', 'inquiry', 'lead', 'rate'];
-function setTicker({ items = [], status, note, asOf } = {}) {
+function setTicker({ items = [], status, note, asOf, sample = false } = {}) {
   const T = OFFICE_STATE.ticker;
   const str = (v, n) => (v == null ? '' : String(v).slice(0, n));
   T.items = (Array.isArray(items) ? items : [])
@@ -367,6 +368,7 @@ function setTicker({ items = [], status, note, asOf } = {}) {
     }))
     .slice(0, 30);
   T.status = feedState(status);
+  T.sample = sample === true; // the TEST layout: rows shown as a sample, labelled TEST, never as stale data
   T.note = note ? String(note) : null;
   T.asOf = asOf ? new Date(asOf).getTime() : Date.now();
   BUS.emit('ticker', T);

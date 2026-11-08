@@ -253,7 +253,7 @@ function seedDemoScreens() {
   ] });
   // no invented numbers: the labels and the layout, the values left blank until the Studio fills them
   const rate = (id, group, label) => ({ kind: 'rate', id, group, label, value: '—', move: '', dir: 0, asOf: 'TEST', text: `${label} —` });
-  setTicker({ status: 'stale', note: 'Bond market and mortgage rates (TEST layout) · live on the Studio', items: [
+  setTicker({ status: 'awaiting', sample: true, note: 'Bond market and mortgage rates (TEST layout) · live on the Studio', items: [
     rate('DGS10', 'Bonds', '10-yr Treasury'), rate('DGS2', 'Bonds', '2-yr Treasury'), rate('DGS5', 'Bonds', '5-yr Treasury'),
     rate('DGS30', 'Bonds', '30-yr Treasury'), rate('T10Y2Y', 'Bonds', '2s10s curve'), rate('DFF', 'Bonds', 'Fed funds'),
     rate('SOFR', 'Bonds', 'SOFR'), rate('MORTGAGE30US', 'Mortgage', '30-yr fixed'), rate('MORTGAGE15US', 'Mortgage', '15-yr fixed'),

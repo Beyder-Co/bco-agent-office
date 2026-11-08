@@ -1046,8 +1046,8 @@ class Station {
       g.add(line);
     } else {
       // the study: no rug, so the same signal runs as a line along the front edge of the desk (the room-facing side)
-      const line = new THREE.Mesh(new THREE.BoxGeometry(DESK.w - 0.1, 0.004, 0.028), this.lineMat);
-      line.position.set(0, 0.0125, DESK.nearZ + DESK.d + 0.12);
+      const line = new THREE.Mesh(new THREE.BoxGeometry(DESK.w + 0.2, 0.004, 0.028), this.lineMat); // a touch wider than the desk: an inlaid line, not a stray mark
+      line.position.set(0, 0.0125, DESK.nearZ + DESK.d + 0.10);
       line.receiveShadow = true;
       g.add(line);
     }

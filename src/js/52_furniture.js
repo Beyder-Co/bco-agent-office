@@ -1,33 +1,6 @@
 /* Reference-based furniture. Models share the office's existing materials;
  * the photographs guide silhouette and joinery, never surface decals. */
 
-/** A closed, gently rounded laminated sheet with real thickness. */
-function furnitureSheet(surface, thickness, material, up, nu = 36, nv = 28) {
-  const pos = [], uv = [], idx = [], hint = new THREE.Vector3(...up);
-  const point = (u,v) => new THREE.Vector3(...surface(u,v));
-  let flip = false;
-  for (let j=0;j<=nv;j++) for(let i=0;i<=nu;i++) {
-    const u=i/nu*2-1, v=j/nv*2-1, p=point(u,v), e=.001;
-    const du=point(Math.min(1,u+e),v).sub(point(Math.max(-1,u-e),v));
-    const dv=point(u,Math.min(1,v+e)).sub(point(u,Math.max(-1,v-e)));
-    const normal=du.cross(dv).normalize();
-    if(i===nu/2 && j===nv/2) flip=normal.dot(hint)<0;
-    if(normal.dot(hint)<0) normal.negate();
-    pos.push(...p.toArray(),...p.clone().addScaledVector(normal,-thickness).toArray());
-    uv.push((u+1)*.65,(v+1)*.65,(u+1)*.65,(v+1)*.65);
-  }
-  const tri=(a,b,c)=>idx.push(a,flip?c:b,flip?b:c);
-  for(let j=0;j<nv;j++) for(let i=0;i<nu;i++) {
-    const a=2*(j*(nu+1)+i), b=a+2, c=a+2*(nu+1), d=c+2;
-    tri(a,b,c);tri(b,d,c);tri(a+1,c+1,b+1);tri(b+1,c+1,d+1);
-  }
-  const rim=(a,b)=>{tri(a,a+1,b);tri(b,a+1,b+1);};
-  for(let i=0;i<nu;i++){rim(2*i,2*(i+1));rim(2*(nv*(nu+1)+i+1),2*(nv*(nu+1)+i));}
-  for(let j=0;j<nv;j++){rim(2*((j+1)*(nu+1)),2*(j*(nu+1)));rim(2*(j*(nu+1)+nu),2*((j+1)*(nu+1)+nu));}
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();
-  const mesh=new THREE.Mesh(geo,material);mesh.userData.noCollide=true;return mesh;
-}
-
 /** Match fabric grain in metres on top, side and back surfaces. */
 function upholsteryUV(geometry, scale=[1,1,1]) {
   const g=geometry.index?geometry.toNonIndexed():geometry, p=g.getAttribute('position'),uv=[];

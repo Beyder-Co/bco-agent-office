@@ -243,9 +243,7 @@ function buildRoom(imgs = {}) {
   const f2 = PLANTS.bloom(8, 1.05, 'tall');
   f2.position.set(2.78, 0, z0 + 0.42);
   room.add(f2);
-  const ol = PLANTS.kentia(5, 1.15, { limit: { x0: -1.0, x1: 1.6, z0: -1.0, z1: 0.36 } }); // (its fronds stay off the glass to the south)
-  ol.position.set(6.3, 0, 5.38);
-  room.add(ol);
+  // (the corner kentia that stood here went with the reading corner: the study's console carries its own bowl)
   buildSculpture(room);
 
   shadowAll(room, true, true);
@@ -1530,12 +1528,12 @@ function buildStudyGlass(g) {
   const post = (x, z) => g.add(box(0.035, H, 0.035, MAT.alu, x, H / 2, z));
   const channel = (len, x, z, alongX) => { const c = box(alongX ? len : 0.06, 0.03, alongX ? 0.06 : len, MAT.alu, x, 0.015, z); c.userData.noShadow = true; g.add(c); };
   const cap = (len, x, z, alongX) => g.add(box(alongX ? len : 0.05, 0.035, alongX ? 0.05 : len, MAT.alu, x, H - 0.0175, z));
-  // the aisle side: three panes between the two ways in
+  // the aisle side: two panes between the two ways in
   const z0 = I.z0 + 0.03, run = G.run.x1 - G.run.x0;
   pane(run, (G.run.x0 + G.run.x1) / 2, z0, true);
   channel(run, (G.run.x0 + G.run.x1) / 2, z0, true);
   cap(run, (G.run.x0 + G.run.x1) / 2, z0, true);
-  for (let i = 0; i <= 3; i++) post(G.run.x0 + (i / 3) * run, z0);
+  for (let i = 0; i <= 2; i++) post(G.run.x0 + (i / 2) * run, z0); // two panes: the middle post lands in the gap between the two desks, never across a monitor
   // the west return, from the aisle side to the south glass
   const xw = I.x0 + 0.03, zs = ROOM.D / 2 - 0.12, retLen = zs - z0;
   pane(retLen, xw, (z0 + zs) / 2, false);
@@ -1562,8 +1560,8 @@ function etchedHalf(which, leafW) {
   const base = E.H * 0.68;
   const stilePx = (E.stile / leafW) * E.W;
   const parts = which === 'left'
-    ? [['BEYDER', `500 ${E.font}px ${BRAND.ui}`, 'rgba(255,255,255,0.94)']]
-    : [['&', `italic 500 ${E.font}px ${BRAND.ui}`, BRAND.crimson], ['CO.', `500 ${E.font}px ${BRAND.ui}`, 'rgba(255,255,255,0.94)']];
+    ? [['BEYDER', `500 ${E.font}px ${BRAND.ui}`, 'rgba(10,10,10,0.9)']]
+    : [['&', `italic 500 ${E.font}px ${BRAND.ui}`, BRAND.crimson], ['CO.', `500 ${E.font}px ${BRAND.ui}`, 'rgba(10,10,10,0.9)']]; // ink: the glass stands in front of white plaster and aluminium
   // lay out glyph by glyph with even tracking, measuring ink so the seam gap is exact
   const glyphs = [];
   for (const [text, font, col] of parts) {
@@ -1586,7 +1584,7 @@ function etchedHalf(which, leafW) {
   // half the tracking each side of the seam: the slim stiles sit inside the gap, never on a letter
   const half = Math.max(E.track / 2, stilePx + 3);
   const shift = which === 'left' ? E.W - half - inkR : half - inkL;
-  ctx.shadowColor = 'rgba(0,0,0,0.28)';
+  ctx.shadowColor = 'rgba(255,255,255,0.35)';
   ctx.shadowBlur = 3;
   for (const g of placed) {
     ctx.font = g.font;
@@ -1758,6 +1756,7 @@ function buildVestibule(room) {
   const indicator = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.11), new THREE.MeshBasicMaterial({ map: canvasTexture(ind), toneMapped: false }));
   indicator.rotation.y = HALF_PI;
   indicator.position.set(v.x0 + 0.075, 2.55, liftZ);
+  g.add(box(0.012, 0.15, 0.34, MAT.aluDark, v.x0 + 0.068, 2.55, liftZ)); // a slim bezel, so the plate belongs to the door assembly
   g.add(indicator);
   g.add(box(0.02, 0.025, d - 0.1, new THREE.MeshBasicMaterial({ color: lin('#ffffff'), toneMapped: false }), v.x0 + 0.01, ROOM.H - 0.06, cz));
   // oak bench with an oatmeal cushion

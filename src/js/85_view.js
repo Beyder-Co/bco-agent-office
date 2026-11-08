@@ -24,7 +24,7 @@ const VIEWS = {
   hotlist: { target: [-5.2, 1.65, -6.15], r: 6.0, theta: 0.0, phi: 1.45 },
   datawall: { target: [7.9, 1.64, 1.4], r: 9, theta: -HALF_PI, phi: 1.42 },
   lounge: { target: [-5.65,.72,4.55], r: 6.3, theta: .18, phi: 1.12 },
-  study: { target: [5.25, 0.85, 4.5], r: 6.0, theta: 2.78, phi: 0.92 }, // from inside the room, over the crew's desks: the two assistants face the camera, the south glass behind them
+  study: { target: [5.6, 1.0, 4.9], r: 6.0, theta: 3.05, phi: 1.0 }, // from the front aisle at working height: the glass screen, the two desks, the console and the mail tray; the sculpture and the crew's nearest desk stay out of frame
   server: { target: [ROOM.server.cx, 1.3, ROOM.server.cz], r: 3.5, theta: 1.12, phi: 1.3 }, // face-on to the corner cabinet
   sculpture: { target: [1.6, 0.8, 4.75], r: 4.6, theta: 0, phi: 1.42 }, // square on, as you look in toward the Forum screen
   // the establishing shot: the office on the Palisades, the Hudson and the bridge below, Manhattan across the river
@@ -75,7 +75,7 @@ function fitAllViews(aw, ah) {
   fitOverview(aw, ah);
   fitDesks(aw, ah);
   fitView('lounge', boxPoints(-8.05,-3.25,0,1.7,3.05,5.8),aw,ah,.88);
-  fitView('study', boxPoints(ROOM.study.inlay.x0, ROOM.study.inlay.x1, 0, 1.9, ROOM.study.inlay.z0, ROOM.study.inlay.z1), aw, ah, .9);
+  fitView('study', boxPoints(4.0, ROOM.study.inlay.x1, 0, 2.35, ROOM.study.inlay.z0, ROOM.study.inlay.z1), aw, ah, .86); // to 2.35: the glass caps and the name bubbles stay inside
   fitView('server', boxPoints(ROOM.server.cx-.7,ROOM.server.cx+.7,0,2.45,ROOM.server.cz-.75,ROOM.server.cz+.75),aw,ah,.90);
   fitView('boardroom', boxPoints(3.4, 8.0, 0, 3.0, -6.2, -3.6), aw, ah, 0.96);
   fitView('door', boxPoints(-10.75, -6.9, 0, 3.0, -1.7, 1.95), aw, ah, 0.94);
@@ -228,7 +228,7 @@ const VIEW = {
     for (const id of OFFICE_STATE.order) {
       const w = WORLD.byId[id];
       if (!w) continue;
-      w.st.lookYaw = OFFICE_STATE.agents[id].status === 'WAITING' ? clamp(wrapAngle(th - STATION_YAW), -1.15, 1.15) : 0;
+      w.st.lookYaw = OFFICE_STATE.agents[id].status === 'WAITING' ? clamp(wrapAngle(th - w.st.group.rotation.y), -1.15, 1.15) : 0; // in the station's own frame (the study's desks face the room)
     }
     // screens redraw on change, when focus changes, and at least every 20 s for their clocks
     const now = performance.now();
@@ -1148,7 +1148,7 @@ const TICK_TYPE = 0.62; // the ticker's type against the strip's height
 const TICK_COL = { view: '#e8eaee', save: '#c9ced6', inquiry: BRAND.crimson, lead: '#ffffff', rate: '#9aa3ad' };
 function tickerItems() {
   const T = OFFICE_STATE.ticker;
-  return T && T.status !== 'awaiting' ? T.items || [] : [];
+  return T && (T.status !== 'awaiting' || T.sample) ? T.items || [] : []; // the TEST layout shows its rows as a sample, never as stale data
 }
 /** Builds the long strip the ring scrolls through (once per update from the bridge). A market item reads
  *  LABEL  value  ▲3 bp  Oct 30; a change of group (bonds, then mortgage rates) gets its own crimson mark. */
@@ -1160,7 +1160,8 @@ function buildTickerStrip() {
   const parts = [];
   if (!items.length) parts.push({ runs: [[T.status === 'awaiting' ? 'Bond market and mortgage rates appear here from the Studio' : T.note || 'Market data unavailable — retrying', 0.5, '#9a9da3', 500, 0]] });
   else {
-    if (T.status === 'stale' || T.status === 'error') parts.push({ runs: [[T.note || 'Showing the last market data', 0.4, SC.amber, 500, 0]] });
+    if (T.sample) parts.push({ runs: [[T.note || 'TEST layout · live on the Studio', 0.4, '#8d9198', 500, 0]] });
+    else if (T.status === 'stale' || T.status === 'error') parts.push({ runs: [[T.note || 'Showing the last market data', 0.4, SC.amber, 500, 0]] });
     let group = null;
     for (const it of items) {
       if (it.kind === 'rate' && it.label) {
@@ -1173,7 +1174,8 @@ function buildTickerStrip() {
         runs.push([it.value, 0.6, '#ffffff', 600, 0]);
         if (it.move) runs.push([it.move, 0.42, it.dir > 0 ? BRAND.crimson : it.dir < 0 ? '#c9ced6' : '#8d9198', 600, 0]);
         if (it.asOf) runs.push([it.asOf, 0.3, '#6c7076', 500, 0.04]);
-        if (it.stale || OFFICE_STATE.ticker.status !== 'live') runs.push(['STALE',0.34,BRAND.crimson,700,0.05]);
+        if (T.sample) runs.push(['TEST', 0.3, '#8d9198', 600, 0.05]);
+        else if (it.stale || OFFICE_STATE.ticker.status !== 'live') runs.push(['STALE',0.34,BRAND.crimson,700,0.05]);
         parts.push({ runs });
       } else parts.push({ runs: [[it.text, 0.5, '#e8eaee', 500, 0]] });
     }
