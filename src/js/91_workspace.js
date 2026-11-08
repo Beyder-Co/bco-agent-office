@@ -59,7 +59,7 @@
     const statusValue=v=>['ok','quiet','starting','missing','stale','error','auth','rate','attention','live','awaiting','partial','unconfigured'].includes(v)?v:'unknown';
     const counts = obj => Object.fromEntries(Object.entries(obj||{}).filter(([k,v])=>['listings','underContract','closing30','closedYTD','offers','offMarket','buyerContracts','system','overdue','approval','today','appointment','lead','engaged','reengaged','slipping'].includes(k)&&numeric(v)!==null));
     return {schema:'bco.agent-office.operational-snapshot/v1',generatedAt:new Date().toISOString(),timeZone:ET,testData:test(),
-      version:{page:'9.0.0',bridge:/^\d+\.\d+\.\d+$/.test(br.version||'')?br.version:null,build:/^[a-f0-9]{20}$/.test(window.BCO_BUILD||'')?window.BCO_BUILD:null},
+      version:{page:'9.1.0',bridge:/^\d+\.\d+\.\d+$/.test(br.version||'')?br.version:null,build:/^[a-f0-9]{20}$/.test(window.BCO_BUILD||'')?window.BCO_BUILD:null},
       connection:['live','offline','simulated','standby'].includes(s.meta.feed)?s.meta.feed:'unknown',
       sources:Object.fromEntries(feedNames.map(k=>[k,{state:statusValue(br.feeds?.[k]?.state),asOf:iso(br.feeds?.[k]?.asOf)}])),
       panels:Object.fromEntries(Object.entries(p).filter(([k])=>['today','pipeline','buyers','feed','highlights','needs'].includes(k)).map(([k,v])=>[k,{state:state(v),asOf:iso(v.asOf)}])),

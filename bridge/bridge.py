@@ -62,8 +62,8 @@ try:
 except Exception:  # pragma: no cover - zoneinfo ships with 3.9+
     ET = timezone(timedelta(hours=-5))
 
-VERSION = "1.7.0"
-PAGE_VERSION = "9.0.0"
+VERSION = "1.7.1"
+PAGE_VERSION = "9.1.0"
 HOME = Path.home()
 
 

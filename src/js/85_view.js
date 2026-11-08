@@ -277,10 +277,11 @@ const VIEW = {
       const c = makeCanvas(W, H);
       const tex = canvasTexture(c);
       tex.minFilter = THREE.LinearMipmapLinearFilter;
-      // the study's board is a transparent LED glass: read from the room, seen through from the floor cameras behind it
-      obj.face.material = key === 'study'
-        ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, transparent: true, opacity: 0.86, side: THREE.DoubleSide, depthWrite: false })
-        : new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+      // every screen is a transparent LED glass, as the study's board: read from the room, the view alive behind the
+      // words (Igor, Nov 8). Only the markets band keeps its solid strip, which carries the focus view's backing.
+      obj.face.material = key === 'ticker'
+        ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
+        : new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, transparent: true, opacity: 0.86, side: THREE.DoubleSide, depthWrite: false });
       const ctx = c.getContext('2d');
       this.screens[key] = {
         key, canvas: c, ctx, tex, W, H, face: obj.face, last: 0, dirty: true,

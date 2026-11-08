@@ -43,7 +43,7 @@ function refreshFreshness(now = Date.now()) {
   const fileAge = Number.isFinite(fileAt)&&fileAt<=now+5000 ? Math.max(0,Math.floor((now-fileAt)/60000))+' min' : 'unknown';
   const age = Number.isFinite(pullAt)&&pullAt<=now+5000 ? Math.max(0,Math.floor((now-pullAt)/60000))+' min old' : 'awaiting valid data';
   el.textContent = `${stale ? 'STALE / ATTENTION · ' : ''}${sourceAgeSummary()} · NJMLS ${age} · next ${time(s.hotsheet.nextRun)} · Rates: ${[...new Set(s.ticker.items.filter(i=>i.asOf).map(i=>(i.source||i.label||"Rate")+" "+i.asOf))].join(" / ")}`;
-  el.title = `${sourceAgeText()} · NJMLS pull ${age}, file ${fileAge} · Rates individually dated · v9.0.0 · Click for sources`;
+  el.title = `${sourceAgeText()} · NJMLS pull ${age}, file ${fileAge} · Rates individually dated · v9.1.0 · Click for sources`;
   el.className = stale ? 'stale' : '';
   document.documentElement.style.setProperty('--fresh-h', Math.ceil(el.getBoundingClientRect().height) + 'px');
 }

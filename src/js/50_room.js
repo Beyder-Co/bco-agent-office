@@ -277,10 +277,10 @@ function buildHotList(room) {
   ROOM_OBJ.hotlist = {};
   for (const [key, y] of [['hotnew', S.yUp], ['hotdone', S.yLo]]) {
     const g = new THREE.Group();
-    const bezel = new THREE.Mesh(roundedBoxGeometry(S.w + 0.05, S.h + 0.05, 0.05, 0.016, 2), MAT.aluDark);
+    const bezel = ledFrame(S.w, S.h);
     g.add(bezel);
     const face = new THREE.Mesh(new THREE.PlaneGeometry(S.w, S.h), MAT.screenOff);
-    face.position.z = 0.0262;
+    face.position.z = 0.006;
     face.userData.pick = bezel.userData.pick = 'screen:' + key;
     g.add(face);
     // Small metal standoffs hold each display off the glass.
@@ -423,10 +423,10 @@ function buildForum(room) {
   // the main screen: a thin aluminium frame, set into the glass between its mullions
   const s = ROOM.screen;
   const g = new THREE.Group();
-  const bezel = new THREE.Mesh(roundedBoxGeometry(s.w + 0.05, s.h + 0.05, 0.05, 0.016, 2), MAT.aluDark);
+  const bezel = ledFrame(s.w, s.h);
   g.add(bezel);
   const face = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.h), MAT.screenOff);
-  face.position.z = 0.0262;
+  face.position.z = 0.006;
   face.userData.pick = bezel.userData.pick = 'screen:main';
   g.add(face);
   g.position.set(s.x, s.y, s.z);
@@ -484,10 +484,10 @@ function buildMarketRoom(room) {
   // the pipeline screen
   const s = ROOM.hot;
   const sg = new THREE.Group();
-  const bezel = new THREE.Mesh(roundedBoxGeometry(s.w + 0.05, s.h + 0.05, 0.05, 0.016, 2), MAT.aluDark);
+  const bezel = ledFrame(s.w, s.h);
   sg.add(bezel);
   const face = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.h), MAT.screenOff);
-  face.position.z = 0.0262;
+  face.position.z = 0.006;
   face.userData.pick = bezel.userData.pick = 'screen:pipeline';
   sg.add(face);
   sg.position.set(s.x, s.y, s.z);
@@ -680,10 +680,10 @@ function buildDataWall(room) {
   const x = ROOM.x1 - 0.07, w = PANEL.w, h = PANEL.h, y = PANEL.y;
   for (const def of PANEL_DEFS) {
     const g = new THREE.Group();
-    const bezel = new THREE.Mesh(roundedBoxGeometry(w + 0.05, h + 0.05, 0.05, 0.016, 2), MAT.aluDark);
+    const bezel = ledFrame(w, h);
     g.add(bezel);
     const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), MAT.screenOff);
-    face.position.z = 0.0262;
+    face.position.z = 0.006;
     g.add(face);
     // standoffs to the glass
     for (const sx of [-1, 1])
@@ -703,10 +703,10 @@ function buildDataWall(room) {
   // the manual's constellation (the Field), the same make as its neighbour
   const M = MANUAL;
   const mg = new THREE.Group();
-  const mBezel = new THREE.Mesh(roundedBoxGeometry(M.w + 0.05, M.h + 0.05, 0.05, 0.016, 2), MAT.aluDark);
+  const mBezel = ledFrame(M.w, M.h);
   mg.add(mBezel);
   const mFace = new THREE.Mesh(new THREE.PlaneGeometry(M.w, M.h), MAT.screenOff);
-  mFace.position.z = 0.0262;
+  mFace.position.z = 0.006;
   mFace.userData.pick = mBezel.userData.pick = 'screen:manual';
   mg.add(mFace);
   for (const sx of [-1, 1])
@@ -1529,7 +1529,7 @@ function buildStudyBoard(g) {
   const face = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.h), MAT.screenOff);
   face.userData.pick = 'screen:study';
   face.userData.frontOnly = true;   // always framed from the room side, never from outside the glass
-  face.userData.focusYaw = 0.2;     // off-axis so the middle glass post stays out of the sight line
+  face.userData.focusYaw = 0.2;     // slightly off-axis: the board reads better with a little parallax
   grp.add(face);
   // two slim blades on pads, outside the chairs' roll-back arc
   const bx = B.w * 0.45;
@@ -1544,6 +1544,27 @@ function buildStudyBoard(g) {
   g.add(grp);
   ROOM_OBJ.panels.push({ key: 'study', title: 'The study', group: grp, face, bezel: null, w: B.w, h: B.h });
   ROOM_OBJ.pickables.push(grp);
+}
+
+/** An open picture frame for a transparent LED screen: nothing solid behind the glass. One mesh, like the slab
+ *  bezels it replaces, so picking and the focus glow work unchanged. */
+function ledFrame(w, h, f = 0.035, d = 0.04, mat = MAT.aluDark) {
+  const o = new THREE.Shape();
+  o.moveTo(-w / 2 - f, -h / 2 - f);
+  o.lineTo(w / 2 + f, -h / 2 - f);
+  o.lineTo(w / 2 + f, h / 2 + f);
+  o.lineTo(-w / 2 - f, h / 2 + f);
+  o.closePath();
+  const hole = new THREE.Path();
+  hole.moveTo(-w / 2, -h / 2);
+  hole.lineTo(-w / 2, h / 2);
+  hole.lineTo(w / 2, h / 2);
+  hole.lineTo(w / 2, -h / 2);
+  hole.closePath();
+  o.holes.push(hole);
+  const g = new THREE.ExtrudeGeometry(o, { depth: d, bevelEnabled: false });
+  g.translate(0, 0, -d / 2);
+  return new THREE.Mesh(g, mat);
 }
 
 /** The study's glass: a screen, not a room. Clear panes in slim aluminium, a floor channel, posts at the pane joints; stopping
@@ -1568,13 +1589,13 @@ function buildStudyGlass(g) {
   pane(run, (G.run.x0 + G.run.x1) / 2, z0, true);
   channel(run, (G.run.x0 + G.run.x1) / 2, z0, true);
   cap(run, (G.run.x0 + G.run.x1) / 2, z0, true);
-  for (let i = 0; i <= 2; i++) post(G.run.x0 + (i / 2) * run, z0); // two panes: the middle post lands in the gap between the two desks, never across a monitor
+  for (const i of [0, 1]) post(G.run.x0 + i * run, z0); // one pane, a post only at each end (Igor: no line across the glass)
   // the west return, from the aisle side to the south glass
   const xw = I.x0 + 0.03, zs = ROOM.D / 2 - 0.12, retLen = zs - z0;
   pane(retLen, xw, (z0 + zs) / 2, false);
   channel(retLen, xw, (z0 + zs) / 2, false);
   cap(retLen, xw, (z0 + zs) / 2, false);
-  for (let i = 0; i <= 2; i++) post(xw, z0 + (i / 2) * retLen);
+  for (const i of [0, 1]) post(xw, z0 + i * retLen);
 }
 
 /* ---------- the entrance: aluminium and glass, the wordmark etched ----------------- */
