@@ -4,8 +4,8 @@
   const ET = 'America/New_York';
   const GROUPS = {system:'System attention',overdue:'Overdue follow-up',approval:'Prepared for review',today:'Due today',appointment:'Appointments',lead:'New leads'};
   const KIND = {view:'Property views',save:'Saved properties',inquiry:'Inquiries',page:'Website visits',email:'Email opens',click:'Email clicks',text_in:'Inbound texts',text_out:'Outbound texts',lead:'New leads'};
-  const SCREEN = {main:'Activity and highlights',today:'Follow-ups and leads',pipeline:'Pipeline and dates',hotnew:'NJMLS new and open',hotdone:'NJMLS price and sold',ticker:'Market rates',manual:'Operating manual'};
-  const CAMERAS = {overview:'Office overview',hudson:'Hudson view',desks:'Agent desks',boardroom:'Market room',datawall:'Data wall',hotlist:'Hot list',screen:'Forum screen',server:'Server cabinet',door:'Office entrance',lounge:'Left lounge',reading:'Right lounge'};
+  const SCREEN = {main:'Activity and highlights',today:'Follow-ups and leads',pipeline:'Pipeline and dates',hotnew:'NJMLS new and open',hotdone:'NJMLS price and sold',ticker:'Market rates',study:'The study board',manual:'Operating manual'};
+  const CAMERAS = {overview:'Office overview',hudson:'Hudson view',desks:'Agent desks',boardroom:'Market room',datawall:'Data wall',hotlist:'Hot list',screen:'Forum screen',server:'Server cabinet',door:'Office entrance',lounge:'Left lounge',study:'The study'};
   const W = {tab:'brief',query:'',group:'all',kind:'all',hours:'all',commandIndex:0,returnFocus:null};
   const html = value => String(value == null ? '' : value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const finite = v => typeof v === 'number' && Number.isFinite(v);
@@ -39,6 +39,8 @@
     const entries=[['brief','Daily brief','Workspace'],['needs','Review needs','Workspace'],['activity','Explore activity','Workspace']].map(([id,label,group])=>({id:'tab:'+id,label,group,run:()=>open(id)}));
     Object.entries(SCREEN).forEach(([key,label])=>{if(typeof VIEW!=='undefined'&&VIEW.screens[key])entries.push({id:'screen:'+key,label,group:'Screens',run:()=>{close();UI.openScreen(key);}});});
     Object.entries(CAMERAS).forEach(([key,label])=>entries.push({id:'camera:'+key,label,group:'Room views',run:()=>{close();UI.view(key);}}));
+    if(typeof VIEWS!=='undefined'&&VIEWS.saved)entries.push({id:'camera:saved',label:'My view',detail:'Your saved camera position',group:'Room views',run:()=>{close();UI.view('saved');}});
+    if(window.OfficeExperience)entries.push({id:'camera:save',label:'Save this view',detail:'Keep the camera where it is as My view',group:'Room views',run:()=>{close();window.OfficeExperience.saveView();}});
     OFFICE_STATE.order.forEach(id=>{const a=OFFICE_STATE.agents[id];if(a)entries.push({id:'agent:'+id,label:a.name,detail:a.specialty,group:'Agents',run:()=>{close();UI.select(id);}});});
     if(window.OfficeExperience)entries.push({id:'experience',label:'Controls and source health',group:'Office',run:()=>{close();window.OfficeExperience.open();}});
     entries.push({id:'board',label:'Task board',group:'Office',run:()=>{close();UI.toggleBoard(true);}});
@@ -48,11 +50,11 @@
   function exportSnapshot() {
     // Explicit allowlist: no source text, names, draft bodies, contact IDs or links.
     const s=OFFICE_STATE, br=s.meta.bridge||{}, f=s.fleet, p=s.panels;
-    const feedNames=['fub','realscout','hotsheet','rates','fleet'];
-    const statusValue=v=>['ok','quiet','starting','missing','stale','error','auth','rate','attention','live','awaiting','partial'].includes(v)?v:'unknown';
+    const feedNames=['fub','realscout','hotsheet','rates','fleet','personal'];
+    const statusValue=v=>['ok','quiet','starting','missing','stale','error','auth','rate','attention','live','awaiting','partial','unconfigured'].includes(v)?v:'unknown';
     const counts = obj => Object.fromEntries(Object.entries(obj||{}).filter(([k,v])=>['listings','underContract','closing30','closedYTD','offers','offMarket','buyerContracts','system','overdue','approval','today','appointment','lead','engaged','reengaged','slipping'].includes(k)&&numeric(v)!==null));
     return {schema:'bco.agent-office.operational-snapshot/v1',generatedAt:new Date().toISOString(),timeZone:ET,testData:test(),
-      version:{page:'8.8.1',bridge:/^\d+\.\d+\.\d+$/.test(br.version||'')?br.version:null,build:/^[a-f0-9]{20}$/.test(window.BCO_BUILD||'')?window.BCO_BUILD:null},
+      version:{page:'8.9.0',bridge:/^\d+\.\d+\.\d+$/.test(br.version||'')?br.version:null,build:/^[a-f0-9]{20}$/.test(window.BCO_BUILD||'')?window.BCO_BUILD:null},
       connection:['live','offline','simulated','standby'].includes(s.meta.feed)?s.meta.feed:'unknown',
       sources:Object.fromEntries(feedNames.map(k=>[k,{state:statusValue(br.feeds?.[k]?.state),asOf:iso(br.feeds?.[k]?.asOf)}])),
       panels:Object.fromEntries(Object.entries(p).filter(([k])=>['today','pipeline','buyers','feed','highlights','needs'].includes(k)).map(([k,v])=>[k,{state:state(v),asOf:iso(v.asOf)}])),
@@ -77,7 +79,7 @@
     return `${sourceLine(p.today)}<div class="ws-metrics">${tiles.map(([label,value])=>`<div><strong>${html(value)}</strong><span>${html(label)}</span></div>`).join('')}</div>
       <p class="ws-note">Needs ${state(p.needs)} · ${html(time(p.needs.asOf))} · Pipeline ${state(p.pipeline)} · ${html(time(p.pipeline.asOf))}</p>
       <div class="ws-columns"><section><h3>Next scheduled jobs</h3><p class="ws-source">${fleetState} · ${html(time(f?.asOf))}</p><ol class="ws-list">${next.map(j=>`<li><strong>${html(j.name)}</strong><span>${html(time(j.next))}</span></li>`).join('')||'<li>No future scheduled job is available in this snapshot.</li>'}</ol></section>
-      <section><h3>Job attention</h3><ol class="ws-list">${issues.map(j=>`<li><strong>${html(j.name)}</strong><p>${html(j.failureCode||'JOB_RESULT_FAILED')} · ${html(j.summary||'The latest source receipt needs review.')}${j.recoveryStep?' · '+html(j.recoveryStep):''}</p><span>${html(time(j.lastAt))}</span> <button class="btn" data-office-command="repair" data-source="${html(j.label)}" data-agent="${html(j.agent)}">Ask Crimson to repair</button></li>`).join('')||`<li>${f?'No job failure is reported in this snapshot.':'Awaiting fleet evidence.'}</li>`}</ol></section></div>
+      <section><h3>Job attention</h3><ol class="ws-list">${issues.map(j=>`<li><strong>${html(j.name)}</strong><p>${html(j.failureCode||'JOB_RESULT_FAILED')} · ${html(j.summary||'The latest source receipt needs review.')}${j.recoveryStep?' · '+html(j.recoveryStep):''}</p><span>${html(time(j.lastAt))}</span> ${OFFICE_STATE.agents[j.agent]?.zone==='personal'?'<span class="ws-note">Personal runtime job · outside Crimson\'s path</span>':`<button class="btn" data-office-command="repair" data-source="${html(j.label)}" data-agent="${html(j.agent)}">Ask Crimson to repair</button>`}</li>`).join('')||`<li>${f?'No job failure is reported in this snapshot.':'Awaiting fleet evidence.'}</li>`}</ol></section></div>
       <p class="ws-note">Appointments cover FUB-native records only. Job success is not client delivery. Source times above apply to their respective counts.</p>
       <button type="button" class="ws-button" data-ws-action="export">Export operational snapshot</button><p class="ws-note">Downloads an aggregate JSON report with source states, counts and schedule times. Client names, messages and drafts are excluded.</p>`;
   }

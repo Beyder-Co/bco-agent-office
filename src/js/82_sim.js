@@ -83,7 +83,7 @@ const PLAYBOOK = {
         ifDecline: "The plan stays with Strategist. Current priorities stand.",
       },
     }],
-    go: ['board', 'lounge', 'reading'],
+    go: ['board', 'lounge', 'screen'],
   },
   analyst: {
     tasks: [
@@ -101,7 +101,7 @@ const PLAYBOOK = {
         ifDecline: 'It stays flagged for review. Nothing is disputed automatically.',
       },
     }],
-    go: ['server', 'board', 'reading'],
+    go: ['server', 'board', 'lounge'],
   },
   scout: {
     tasks: [
@@ -138,7 +138,46 @@ const PLAYBOOK = {
         undo: 'Reversible: the videos can be set back to private.',
       },
     }],
-    go: ['lounge', 'reading', 'tree'],
+    go: ['lounge', 'screen', 'tree'],
+  },
+  // the study (TEST sample only: a personal runtime is never simulated as connected)
+  attache: {
+    tasks: [
+      { title: 'Personal inbox triage (TEST)', steps: [['browsing', 'Sorting the personal inbox — sample messages'], ['coding', 'Drafting two replies for Igor to read first'], ['browsing', 'Checking the calendar for the week — sample']] },
+      { title: 'Appointment prep (TEST)', steps: [['browsing', 'Confirming the sample appointment details'], ['coding', 'Writing the reminder note for Igor']] },
+    ],
+    think: ['Deciding what Igor needs to see today', 'Holding a draft until Igor reads it'],
+    stuck: ['Sample mailbox took too long to answer'],
+    gates: [{
+      need: 'Send the drafted reply to the sample dentist’s office?',
+      brief: {
+        action: 'Attaché sends the reply it drafted, confirming the sample appointment. Nothing leaves until you say so.',
+        facts: [['To', 'Sample dentist’s office (TEST)'], ['Draft', 'Confirms Thursday 9:00 AM'], ['Channel', 'Personal email']],
+        why: 'It goes out under your name.',
+        ifDecline: 'The draft stays in the personal outbox.',
+        undo: 'A sent message cannot be recalled; a correction can follow.',
+      },
+    }],
+    go: [],
+  },
+  bursar: {
+    tasks: [
+      { title: 'Bills due this week (TEST)', steps: [['browsing', 'Listing the sample bills due in the next seven days'], ['coding', 'Preparing the payment list with amounts and due dates'], ['browsing', 'Checking the sample statements for anything unusual']] },
+      { title: 'Renewals review (TEST)', steps: [['browsing', 'Reading the sample subscriptions renewing this month'], ['coding', 'Noting which to keep, pause or question']] },
+    ],
+    think: ['Checking a sample amount against last month', 'Sorting what is due from what can wait'],
+    stuck: ['Sample statement did not load'],
+    gates: [{
+      need: 'Approve paying the sample utility bill?',
+      brief: {
+        action: 'Bursar queues the sample utility payment for the due date. No payment moves without your approval.',
+        facts: [['Payee', 'Sample utility (TEST)'], ['Amount', 'TEST figure'], ['Due', 'In four days']],
+        why: 'Money leaves your account.',
+        ifDecline: 'The bill stays on the list, marked unpaid.',
+        undo: 'A scheduled payment can be cancelled before the due date.',
+      },
+    }],
+    go: [],
   },
   _default: {
     tasks: [
@@ -236,8 +275,15 @@ function goLive() {
     a.log = [];
     a.held = [];
     a.delivered = [];
-    a.engine = 'Studio job mirror';
     a.paused = false;
+    if (a.zone === 'personal') {
+      // the study's pair are not Studio business jobs; they stay quiet until a personal runtime reports in
+      a.engine = 'Personal runtime · not connected';
+      setAgentStatus(id, 'IDLE', { detail: 'Personal runtime not connected' });
+      pushLog(id, 'Waiting for a personal runtime on the Studio — nothing is read, sent or paid', 'system');
+      continue;
+    }
+    a.engine = 'Studio job mirror';
     setAgentStatus(id, 'IDLE', { detail: 'Connecting to the Studio' });
     pushLog(id, 'Connected to the Studio — mirroring its jobs, read-only', 'system');
   }
@@ -269,6 +315,7 @@ function seedOffice() {
   const start = {
     builder: ['WORKING', 0, 0], engineer: ['WORKING', 0, 1], strategist: ['THINKING', 0, 0],
     analyst: ['WORKING', 0, 0], scout: ['WORKING', 0, 1], publisher: ['WORKING', 0, 0],
+    attache: ['WORKING', 0, 0], bursar: ['THINKING', 0, 0],
   };
   for (const [id, [status, ti, si]] of Object.entries(start)) {
     const t = pb(id).tasks[ti];
@@ -306,6 +353,7 @@ function seedLive() {
   for (const id of OFFICE_STATE.order) {
     const a = OFFICE_STATE.agents[id];
     if (a.paused) setAgentStatus(id, 'IDLE', { detail: 'Paused by design' });
+    else if (a.zone === 'personal') setAgentStatus(id, 'IDLE', { detail: 'Personal runtime not connected' });
     else setAgentStatus(id, 'IDLE', { detail: 'Awaiting live events' });
   }
   pushLog('automations', 'Paused by design during Studio merge tests', 'system');

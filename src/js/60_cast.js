@@ -84,6 +84,28 @@ const CAST = [
     look: { color: 'plum', bot: { preset: 'screen' }, prop: 'mic', screen: 'media' },
     slot: 6,
   },
+  /* ---- the study: Igor's two personal assistants, outside Beyder&Co. ---------------------------------
+     Painted in the brand's own ink and bone rather than the crew's colours. They sit at slots 10 and 11 in the
+     study, never at the crew's desks, and they do not report to Crimson. Until a personal runtime is configured on
+     the Studio (bridge: personal_runtime), their cards say so plainly; nothing here is sent, booked or paid. */
+  {
+    id: 'attache', name: 'ATTACHÉ', monogram: 'At', engine: 'Personal runtime · not connected', zone: 'personal',
+    specialty: 'Personal inbox & calendar',
+    role: "Igor's personal correspondence, calendar and errands, outside Beyder&Co. Reads, sorts and drafts; nothing is sent or booked without Igor. Separate from the business crew and its coordinator.",
+    systems: ['Personal email', 'Calendar', 'Personal tasks'],
+    delivered: [],
+    look: { color: 'ink', bot: { preset: 'capsule' }, prop: 'tablet', screen: 'ops' },
+    slot: 10,
+  },
+  {
+    id: 'bursar', name: 'BURSAR', monogram: 'Br', engine: 'Personal runtime · not connected', zone: 'personal',
+    specialty: 'Bills, payments & renewals',
+    role: "Igor's household bills, subscriptions, renewals and personal documents. Prepares what is due and why; every payment waits for Igor's approval. Separate from the business crew and its coordinator.",
+    systems: ['Household bills', 'Subscriptions & renewals', 'Personal documents'],
+    delivered: [],
+    look: { color: 'bone', bot: { preset: 'orb' }, prop: 'ledger', screen: 'sheet' },
+    slot: 11,
+  },
 ];
 
 /** Robots for agents who join later: each preset is a whole bot (head and base), desk object and screen. */

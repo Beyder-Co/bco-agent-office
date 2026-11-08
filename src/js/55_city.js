@@ -440,6 +440,9 @@ void main() {
     float mullion=(1.-smoothstep(.008,.008+fw.x,abs(f.x-.5)))*curtain*aa;
     winCol=mix(winCol,base*light*.7,mullion*.7);
     col = mix(facade, winCol, win);
+    // our own tower keeps its rooms dark after hours; its mullions and spandrels catch the office's spill and the city's
+    // glow, so from the Hudson the floor sits on a building and not on a black slab
+    col += own * uNight * (vec3(0.055, 0.06, 0.07) * (1.0 - win) + vec3(0.02, 0.022, 0.026) * win) * smoothstep(60.0, 8.0, vTop - vWorld.y);
     // shopfronts at street level
     vec3 shop = vec3(0.03, 0.032, 0.035) + refl * 0.15 + vec3(1.0, 0.82, 0.6) * 1.2 * uNight * (1.0 - dark);
     col = mix(col, shop, ground * 0.75 * step(style, 5.5));

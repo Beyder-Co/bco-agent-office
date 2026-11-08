@@ -42,7 +42,7 @@ const OFFICE_STATE = {
   /** task board: { id, title, agentId, column, at, record } — finished work is pruned to the latest 80 */
   tasks: [],
   /** running totals that survive pruning; finishedByDay is keyed by ET date */
-  stats: { finished: 0, finishedByDay: {} },
+  stats: { finished: 0, finishedByDay: {}, /** `${etDay}:${agentId}` → count; what the study's board calls Done today */ finishedByAgentDay: {} },
   /** systems and cadences shown under RUNNING on the main screen */
   running: [],  /** open issues (seeded from the operating record) */
   issues: [],  /** the MLS hot sheet: only ever filled by the live feed (never simulated) */
@@ -106,13 +106,14 @@ function makeAgent(def) {
     delivered: def.delivered || [],
     look: def.look,
     slot: def.slot,
+    zone: def.zone || null, // 'personal': the study's pair, outside the business crew and its coordinator
     paused: !!def.paused,
     status: 'IDLE',
     activity: null,
     detail: def.paused ? 'Paused by design' : 'Settling in',
     stuck: false,
     taskId: null,
-    location: 'desk', // desk | walking | server | screen | lounge | reading | board | arriving
+    location: 'desk', // desk | walking | server | screen | lounge | board | arriving
     log: [],
     held: [],
   };
@@ -223,6 +224,8 @@ function moveTask(taskOrId, column) {
     const day = etDay();
     OFFICE_STATE.stats.finished++;
     OFFICE_STATE.stats.finishedByDay[day] = (OFFICE_STATE.stats.finishedByDay[day] || 0) + 1;
+    const k = day + ':' + task.agentId;
+    OFFICE_STATE.stats.finishedByAgentDay[k] = (OFFICE_STATE.stats.finishedByAgentDay[k] || 0) + 1;
     const done = OFFICE_STATE.tasks.filter(t => t.column === 'done' && !t.record);
     if (done.length > 80) {
       const drop = new Set(done.sort((a, b) => a.at - b.at).slice(0, done.length - 80));
@@ -234,8 +237,11 @@ function moveTask(taskOrId, column) {
 }
 
 /** Bring a new agent aboard (cap ten). Returns the agent or an error string. */
+/** The business crew: everyone at the ten desks (the study's personal pair are not counted against them). */
+const deskAgents = () => OFFICE_STATE.order.filter(id => !OFFICE_STATE.agents[id].zone);
+
 function addAgent(spec) {
-  if (OFFICE_STATE.order.length >= CAST_CAP) return 'All ten desks are taken.';
+  if (deskAgents().length >= CAST_CAP) return 'All ten desks are taken.';
   const taken = new Set(OFFICE_STATE.order.map(id => OFFICE_STATE.agents[id].slot));
   const slot = [8, 9, 0, 1, 2, 3, 4, 5, 6, 7].find(s => !taken.has(s));
   if (slot == null) return 'No free desk.';
@@ -261,7 +267,8 @@ function addAgent(spec) {
   a.detail = 'Arriving';
   a.instruction = spec.instruction || '';
   OFFICE_STATE.agents[id] = a;
-  OFFICE_STATE.order.push(id);
+  const firstPersonal = OFFICE_STATE.order.findIndex(i => OFFICE_STATE.agents[i].zone === 'personal'); // the crew stay before the study (roster divider, 1–0 shortcuts)
+  if (firstPersonal < 0) OFFICE_STATE.order.push(id); else OFFICE_STATE.order.splice(firstPersonal, 0, id);
   pushLog(id, 'Display agent added for this browser session', 'system');
   BUS.emit('add', a);
   return a;
@@ -350,7 +357,7 @@ const pushHotSheet = row => setHotSheet({ rows: [row], replace: false });
 
 /** Replace the ticker's items. kind ∈ view | save | inquiry | lead | rate; text is ready to show; at is ISO. */
 const TICKER_KINDS = ['view', 'save', 'inquiry', 'lead', 'rate'];
-function setTicker({ items = [], status, note, asOf } = {}) {
+function setTicker({ items = [], status, note, asOf, sample = false } = {}) {
   const T = OFFICE_STATE.ticker;
   const str = (v, n) => (v == null ? '' : String(v).slice(0, n));
   T.items = (Array.isArray(items) ? items : [])
@@ -363,6 +370,7 @@ function setTicker({ items = [], status, note, asOf } = {}) {
     }))
     .slice(0, 30);
   T.status = feedState(status);
+  T.sample = sample === true; // the TEST layout: rows shown as a sample, labelled TEST, never as stale data
   T.note = note ? String(note) : null;
   T.asOf = asOf ? new Date(asOf).getTime() : Date.now();
   BUS.emit('ticker', T);

@@ -54,6 +54,9 @@ const AGENT_COLORS = {
   green: { label: 'Emerald', main: '#17975a', light: '#8fdcae', soft: '#cbecd8' },
   lime: { label: 'Lime', main: '#97c11e', light: '#d8ee8c', soft: '#e9f3c6' },
   plum: { label: 'Magenta', main: '#d2348f', light: '#f6a8d2', soft: '#f6d3e6' },
+  // the personal pair in the study: the brand's own ink and paper, so they read apart from the business crew
+  ink: { label: 'Ink', main: '#26272b', light: '#f1f1f3', soft: '#d6d6da' },
+  bone: { label: 'Bone', main: '#8f877a', light: '#f6f4ef', soft: '#e3dfd6' }, // warm stone: reads against the white desks and the dark inlay
   // for agents who join later
   indigo: { label: 'Indigo', main: '#3f47b8', light: '#aab0f2', soft: '#d9dbf6' },
   aqua: { label: 'Aqua', main: '#1598aa', light: '#8be0ea', soft: '#cdeef2' },

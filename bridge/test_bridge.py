@@ -34,6 +34,7 @@ os.environ["BCO_ENV_FILE"] = os.path.join(TMP, "runtime.env")
 os.environ["BCO_HOTSHEET_PATH"] = os.path.join(TMP, "hotsheet_latest.json")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 Path(TMP, "config.json").write_text(json.dumps({"access_hold_ids":[99000001], "fub_domain":"example", "public_business_number":"201-380-2010"}))
+from unittest.mock import patch  # noqa: E402
 import bridge as B  # noqa: E402
 
 ET = B.ET
@@ -810,6 +811,114 @@ class Fleet(unittest.TestCase):
         long = B.build_fleet(lst, scheds, {}, {}, {"com.beyderco.realscout.intake": NOW - timedelta(minutes=55)}, NOW)
         self.assertEqual((long["agents"]["scout"]["status"], long["agents"]["scout"]["stuck"]), ("THINKING", True))
 
+    def test_personal_runtime_config_is_shape_checked_only(self):
+        self.assertIsNone(B.validate_personal_runtime(None))
+        self.assertIsNone(B.validate_personal_runtime({"model": "x"}))
+        self.assertIsNone(B.validate_personal_runtime({"model": "Muse Wonder", "key_file": "~/k"}))  # spaces/case: not an id
+        self.assertIsNone(B.validate_personal_runtime({"model": "muse-wonder", "key_file": "~/k", "label_prefix": "com.beyderco."}))  # must not shadow the business fleet
+        ok = B.validate_personal_runtime({"model": "muse-wonder", "key_file": "~/Library/Application Support/bco-personal/.env"})
+        self.assertEqual((ok["model"], ok["label_prefix"]), ("muse-wonder", "com.igorbeyder.personal."))
+        self.assertTrue(ok["key_file"].is_absolute())
+
+    def test_personal_jobs_belong_to_the_study(self):
+        self.assertEqual(B.agent_for_job("com.igorbeyder.personal.inbox-triage"), ("attache", "Inbox triage"))
+        self.assertEqual(B.agent_for_job("com.igorbeyder.personal.bills-weekly"), ("bursar", "Bills weekly"))
+        with patch.dict(B.CFG, personal_runtime={"model": "muse-wonder", "label_prefix": "com.igorbeyder.personal.", "key_file": Path("/nonexistent")}):
+            self.assertTrue(B.office_native_label("com.igorbeyder.personal.calendar"))
+        with patch.dict(B.CFG, personal_runtime=None):
+            self.assertFalse(B.office_native_label("com.igorbeyder.personal.calendar"))  # unconfigured: not mirrored at all
+        self.assertNotIn("attache", B.ROLE_CATALOG)  # the study never reaches Crimson's command path
+        with self.assertRaises(ValueError):
+            B.OfficeCommands(B.Hub()).context({"mode": "instruction", "agentId": "attache", "message": "pay the bill"})
+
+    def test_personal_jobs_never_degrade_the_business_fleet_feed(self):
+        d = Path(tempfile.mkdtemp()); (d / "k.env").write_text("")
+        import sqlite3
+        con = sqlite3.connect(d / "db"); con.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, ts TEXT, job TEXT, kind TEXT, ok INTEGER, summary TEXT, data TEXT)"); con.commit(); con.close()
+        now = datetime.now(timezone.utc)
+        (d / "com.igorbeyder.personal.bills-weekly.json").write_text(json.dumps({"job": "com.igorbeyder.personal.bills-weekly", "ok": False, "summary": "card declined (sample)", "generated_at": B.iso_z(now - timedelta(minutes=3))}))
+        (d / "com.beyderco.monitor.json").write_text(json.dumps({"job": "com.beyderco.monitor", "ok": True, "summary": "all green", "generated_at": B.iso_z(now - timedelta(minutes=3))}))
+        listing = "PID\tStatus\tLabel\n-\t0\tcom.beyderco.monitor\n-\t1\tcom.igorbeyder.personal.bills-weekly\n"
+        hub = B.Hub()
+        rt = {"model": "muse-wonder", "label_prefix": "com.igorbeyder.personal.", "key_file": d / "k.env"}
+        with patch.dict(B.CFG, personal_runtime=rt):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "db"); fl = w.tick()
+            self.assertEqual(hub.feeds["fleet"]["state"], "ok"); self.assertIn("1 jobs", hub.feeds["fleet"]["note"]); self.assertIn("0 reporting a failure", hub.feeds["fleet"]["note"])
+            self.assertEqual(hub.feeds["personal"]["state"], "attention"); self.assertEqual(hub.feeds["personal"]["failures"], 1)
+            self.assertTrue(any(j["label"] == "com.igorbeyder.personal.bills-weekly" and j["agent"] == "bursar" for j in fl["jobs"]))  # the study still sees its job
+            self.assertNotIn("fleet", hub.readiness()["attention"])
+            needs = B.system_needs({}, fl, None)
+            row = next(n for n in needs if n["id"].endswith("bills-weekly"))
+            self.assertIsNone(row["link"])  # a household job never points at the business Command Center
+            # an aged personal feed goes stale like the fleet feed: an unchecked source is never shown as live
+            self.assertEqual(hub.feed_view(now + timedelta(seconds=120))["personal"]["state"], "stale")
+            # a quiet refresh: the same state next tick moves asOf without another bridge broadcast
+            before = hub.feeds["personal"]["asOf"]
+            with patch.object(B.Hub, "update") as upd:
+                w.report_personal(fl, now + timedelta(seconds=15))
+            self.assertNotEqual(hub.feeds["personal"]["asOf"], before); self.assertFalse(upd.called)
+
+    def test_automatic_repairs_are_limited_per_job_per_day(self):
+        d = Path(tempfile.mkdtemp())
+        hub = B.Hub(); hub.set_feed("fleet", "ok", B.iso_z(datetime.now(timezone.utc)))
+        clock = {"t": 1_800_000_000.0}
+        sent = []
+        cmd = B.OfficeCommands(hub, path=d / "ledger.jsonl", runner=lambda prompt: (sent.append(prompt), "0f0f0f0f-0000-4000-8000-000000000000")[1], clock=lambda: clock["t"])
+        (d / "coordinator-started-at").write_text(str(clock["t"] - 10))
+        def job(ok, at):
+            return {"label": "com.beyderco.flap", "name": "Flap", "agent": "automations", "ok": ok, "running": False, "lastFrom": "record",
+                    "lastAt": B.iso_z(datetime.fromtimestamp(at, timezone.utc)), "summary": "flapping (sample)"}
+        for cycle in range(12):  # fails, then recovers, every 15 minutes for three hours
+            clock["t"] += 900; failing = job(False, clock["t"] - 5)
+            hub.update("fleet", {"type": "fleet", "jobs": [failing]})
+            cmd.observe_failures([failing])
+            clock["t"] += 900; healthy = job(True, clock["t"] - 5)
+            hub.update("fleet", {"type": "fleet", "jobs": [healthy]})
+            cmd.observe_failures([healthy])
+        automatic = [r for r in cmd.rows() if r.get("automatic")]
+        self.assertEqual(len(automatic), B.REPAIR_DAILY_LIMIT); self.assertEqual(len(sent), B.REPAIR_DAILY_LIMIT)
+        self.assertIn("com.beyderco.flap", cmd.metadata()["repairPaused"])
+        clock["t"] += 86400 + 900; failing = job(False, clock["t"] - 5)  # a day later the limit resets
+        hub.update("fleet", {"type": "fleet", "jobs": [failing]}); cmd.observe_failures([failing])
+        self.assertEqual(len([r for r in cmd.rows() if r.get("automatic")]), B.REPAIR_DAILY_LIMIT + 1)
+        self.assertNotIn("com.beyderco.flap", cmd.metadata()["repairPaused"])
+
+    def test_personal_feed_states_are_honest(self):
+        d = Path(tempfile.mkdtemp())
+        hub = B.Hub()
+        listing = "PID\tStatus\tLabel\n-\t0\tcom.beyderco.monitor\n"
+        with patch.dict(B.CFG, personal_runtime=None):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "none.db")
+            with self.assertRaises(OSError): w.tick()  # the fleet counter database guard still applies
+        (d / "db").write_bytes(b"")
+        import sqlite3
+        con = sqlite3.connect(d / "db"); con.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, ts TEXT, job TEXT, kind TEXT, ok INTEGER, summary TEXT, data TEXT)"); con.commit(); con.close()
+        with patch.dict(B.CFG, personal_runtime=None):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "db"); w.tick()
+            self.assertEqual(hub.feeds["personal"]["state"], "unconfigured")
+            r = hub.readiness()
+            self.assertNotIn("personal", r["blockingFeeds"]); self.assertNotIn("personal", r["attention"])
+            fresh = {k: {"state": "ok", "asOf": B.iso_z(datetime.now(timezone.utc))} for k in hub.feeds if k != "personal"}
+            self.assertEqual(hub.readiness(dict(fresh, personal={"state": "unconfigured"}))["ready"], True)
+            self.assertEqual(hub.readiness(dict(fresh, personal={"state": "error"})), hub.readiness(dict(fresh, personal={"state": "ok"})))  # the study never moves business readiness
+        rt = {"model": "muse-wonder", "label_prefix": "com.igorbeyder.personal.", "key_file": d / "missing.env"}
+        with patch.dict(B.CFG, personal_runtime=rt):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "db"); w.tick()
+            self.assertEqual(hub.feeds["personal"]["state"], "missing")
+            self.assertIn("key file", hub.feeds["personal"]["note"])
+        (d / "missing.env").write_text("TEST=1\n")
+        with patch.dict(B.CFG, personal_runtime=rt):
+            w = B.FleetWatcher(hub, runner=lambda: listing, agents_dir=d, results_dir=d, db=d / "db"); w.tick()
+            self.assertEqual(hub.feeds["personal"]["state"], "missing")
+            self.assertIn("no com.igorbeyder.personal.* jobs", hub.feeds["personal"]["note"])
+            running = listing + "515\t0\tcom.igorbeyder.personal.inbox-triage\n"
+            w = B.FleetWatcher(hub, runner=lambda: running, agents_dir=d, results_dir=d, db=d / "db"); fl = w.tick()
+            self.assertEqual(hub.feeds["personal"]["state"], "ok")
+            self.assertIn("1 running", hub.feeds["personal"]["note"])
+            self.assertEqual(fl["agents"]["attache"]["status"], "WORKING")
+            self.assertNotIn("TEST=1", json.dumps(hub.diagnostics()))  # the key file's contents never travel
+            self.assertEqual(hub.diagnostics()["personalRuntime"], {"configured": True, "model": "muse-wonder", "labelPrefix": "com.igorbeyder.personal."})
+
     def test_jobs_without_records_use_their_logs(self):
         lst = B.parse_launchctl_list("PID\tStatus\tLabel\n-\t0\tcom.beyderco.contacts.sync\n-\t75\tcom.beyderco.maintenance\n"
                                      "-\t1\tcom.beyderco.engaged-watch\n")
@@ -1163,7 +1272,7 @@ class FreshnessV84(unittest.TestCase):
         self.assertEqual(h.feeds['realscout']['state'],'stale')
 
     def test_server_heartbeat_reports_release(self):
-        meta=B.Hub().meta();self.assertEqual(meta['pageVersion'],'8.8.1');self.assertIn('serverTime',meta)
+        meta=B.Hub().meta();self.assertEqual(meta['pageVersion'],'8.9.0');self.assertIn('serverTime',meta)
 
 
 class ReleaseV84(unittest.TestCase):

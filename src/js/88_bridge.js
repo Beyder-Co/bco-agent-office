@@ -60,7 +60,7 @@ function resolveBridgeUrl() {
 
 /** The bridge's own report: which feeds are healthy, and whether it drives the crew. */
 function applyBridgeMeta(m) {
-  if ((m.buildId && window.BCO_BUILD && m.buildId !== window.BCO_BUILD) || (m.pageVersion && m.pageVersion !== '8.8.1')) { location.reload(); return; }
+  if ((m.buildId && window.BCO_BUILD && m.buildId !== window.BCO_BUILD) || (m.pageVersion && m.pageVersion !== '8.9.0')) { location.reload(); return; }
   const was = OFFICE_STATE.meta.bridge && OFFICE_STATE.meta.bridge.drivesAgents;
   OFFICE_STATE.meta.bridge = { version: m.version, readOnly: m.readOnly !== false, drivesAgents: !!m.drivesAgents, feeds: m.feeds || {}, testData: !!m.testData, commands: m.commands || null };
   for (const [id,role] of Object.entries(m.commands?.roles || {})) if (OFFICE_STATE.agents[id]) Object.assign(OFFICE_STATE.agents[id],role);
@@ -79,7 +79,7 @@ function applyBridgeEvent(m) {
   if (!m || typeof m !== 'object') return;
   switch (m.type) {
     case 'heartbeat':
-      if ((m.buildId && window.BCO_BUILD && m.buildId !== window.BCO_BUILD) || (m.pageVersion && m.pageVersion !== '8.8.1')) location.reload();
+      if ((m.buildId && window.BCO_BUILD && m.buildId !== window.BCO_BUILD) || (m.pageVersion && m.pageVersion !== '8.9.0')) location.reload();
       return;
     case 'status': {
       const ag = OFFICE_STATE.agents[m.id];
@@ -253,7 +253,7 @@ function seedDemoScreens() {
   ] });
   // no invented numbers: the labels and the layout, the values left blank until the Studio fills them
   const rate = (id, group, label) => ({ kind: 'rate', id, group, label, value: '—', move: '', dir: 0, asOf: 'TEST', text: `${label} —` });
-  setTicker({ status: 'stale', note: 'Bond market and mortgage rates (TEST layout) · live on the Studio', items: [
+  setTicker({ status: 'awaiting', sample: true, note: 'Bond market and mortgage rates (TEST layout) · live on the Studio', items: [
     rate('DGS10', 'Bonds', '10-yr Treasury'), rate('DGS2', 'Bonds', '2-yr Treasury'), rate('DGS5', 'Bonds', '5-yr Treasury'),
     rate('DGS30', 'Bonds', '30-yr Treasury'), rate('T10Y2Y', 'Bonds', '2s10s curve'), rate('DFF', 'Bonds', 'Fed funds'),
     rate('SOFR', 'Bonds', 'SOFR'), rate('MORTGAGE30US', 'Mortgage', '30-yr fixed'), rate('MORTGAGE15US', 'Mortgage', '15-yr fixed'),

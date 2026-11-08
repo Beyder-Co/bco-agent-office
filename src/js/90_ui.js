@@ -19,7 +19,7 @@ function stateWords(a) {
   }
   if (DESTINATIONS[a.location]) return { cls: 'idle', text: 'Away', long: DESTINATIONS[a.location].label };
   switch (a.status) {
-    case 'WORKING': return { cls: 'work', text: a.activity === 'browsing' ? 'Browsing…' : 'Coding…' };
+    case 'WORKING': return { cls: 'work', text: a.zone === 'personal' ? (a.activity === 'browsing' ? 'Reading…' : 'Writing…') : a.activity === 'browsing' ? 'Browsing…' : 'Coding…' }; // the study's pair read and write; they never code
     case 'THINKING': return a.stuck ? { cls: 'think stuck', text: 'Stuck', long: 'Stuck · retrying' } : { cls: 'think', text: 'Thinking…' };
     case 'DONE': return { cls: 'done', text: 'Done' };
     default: return { cls: 'idle', text: 'Idle' };
@@ -30,7 +30,7 @@ const agentHex = a => colorsOf(a.look.color).main; // the robot's body paint: ea
 const tileStyle = a => `style="--c:${agentHex(a)};--ct:${inkOn(agentHex(a))}"`;
 const tileHTML = (a, extra = '') => `<span ${tileStyle(a)} class="tile${extra}">${esc(a.monogram)}</span>`;
 /** Each live source the office reads, as the Studio bridge reports it: healthy, quiet, or down (and since when). */
-const FEED_NAMES = [['fleet', 'Studio jobs'], ['fub', 'Follow Up Boss'], ['realscout', 'RealScout'], ['hotsheet', 'NJMLS hot sheet'], ['rates', 'Markets']];
+const FEED_NAMES = [['fleet', 'Studio jobs'], ['fub', 'Follow Up Boss'], ['realscout', 'RealScout'], ['hotsheet', 'NJMLS hot sheet'], ['rates', 'Markets'], ['personal', 'Personal runtime']];
 function feedsHTML() {
   const br = OFFICE_STATE.meta.bridge;
   if (!br || !br.feeds || OFFICE_STATE.meta.feed === 'simulated') return '';
@@ -39,7 +39,7 @@ function feedsHTML() {
     const d = new Date(iso);
     return isNaN(d) ? '' : Date.now() - d.getTime() < 20 * 3600e3 ? fmtTime(d) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
   };
-  const word = { ok: 'live', partial: 'partial', quiet: 'quiet', starting: 'connecting', missing: 'missing', stale: 'stale', error: 'down', auth: 'key problem', rate: 'slowed', attention: 'needs a look' };
+  const word = { ok: 'live', partial: 'partial', quiet: 'quiet', starting: 'connecting', missing: 'missing', stale: 'stale', error: 'down', auth: 'key problem', rate: 'slowed', attention: 'needs a look', unconfigured: 'not set up' };
   const rows = FEED_NAMES.filter(([k]) => br.feeds[k]).map(([k, name]) => {
     const f = br.feeds[k];
     const bad = ['error', 'auth', 'missing'].includes(f.state);
@@ -179,6 +179,7 @@ const UI = {
     document.querySelectorAll('.views button').forEach(b => b.addEventListener('click', () => this.view(b.dataset.view)));
     $('#viewSelect').addEventListener('change', e => this.view(e.target.value));
     $('#btnBoard').addEventListener('click', () => this.toggleBoard());
+    $('#btnSaveView').addEventListener('click', () => { $('#officeMore').open = false; if (window.OfficeExperience) OfficeExperience.saveView(); });
     $('#boardClose').addEventListener('click', () => this.toggleBoard(false));
     $('#btnAdd').addEventListener('click', () => this.openAdd());
     $('#btnFull').addEventListener('click', () => this.fullscreen());
@@ -309,7 +310,7 @@ const UI = {
       }).join('') +
       `<button type="button" class="count total key" data-k="DONE" title="Studio job runs finished today. Opens the task board; job completion is not client delivery."><span class="n tnum">${c.DONE}</span><span class="l">Done</span></button>`;
     if (this._booted) requestAnimationFrame(() => this.updateInsets());
-    const n = OFFICE_STATE.order.length;
+    const n = deskAgents().length;
     $('#btnAdd').disabled = n >= CAST_CAP;
     $('#btnAdd').title = n >= CAST_CAP ? 'All ten desks are taken' : 'Bring a new agent aboard';
     $('#deskCount').textContent = n >= CAST_CAP ? `${n} agents · every desk taken` : `${n} agents · room for ${CAST_CAP - n} more`;
@@ -334,7 +335,8 @@ const UI = {
 
   /* ---------- roster ---------- */
   renderRoster() {
-    $('#rosterList').innerHTML = OFFICE_STATE.order.map(id => `<li id="r-${id}"></li>`).join('');
+    // the crew first; a quiet divider before the study's personal pair
+    $('#rosterList').innerHTML = OFFICE_STATE.order.map((id, i) => `${OFFICE_STATE.agents[id].zone === 'personal' && (!i || OFFICE_STATE.agents[OFFICE_STATE.order[i - 1]].zone !== 'personal') ? '<li class="rail-sep" role="presentation"><span class="eyebrow">Personal</span></li>' : ''}<li id="r-${id}"></li>`).join('');
     OFFICE_STATE.order.forEach(id => this.renderRosterRow(id));
   },
   renderRosterRow(id) {
@@ -363,6 +365,7 @@ const UI = {
     set(b, 'title', `${a.name} — ${a.specialty}`);
     set(b, 'aria-label', `${a.name} · ${s.text} · ${line.text}`);
     set(tile, 'class', 'tile' + (wait ? ' wait' : ''));
+    set(tile, 'data-s', a.status); // the collapsed rail shows state as a dot on the tile
     txt(tile, a.monogram);
     txt(b.querySelector('.nm'), a.name);
     set(chip, 'class', 'chip ' + s.cls);
@@ -601,11 +604,18 @@ const UI = {
         ${gates.length > shown.length ? `<button type="button" class="linkbtn p-more" data-act="needs-all">Show all ${gates.length}</button>` : ''}` : '';
     // the Studio jobs it runs: last run (✓ or ✕) and next
     const jobs = live && OFFICE_STATE.fleet ? (OFFICE_STATE.fleet.jobs || []).filter(j => j.agent === a.id) : [];
+    const personal = a.zone === 'personal'; // the study's pair: no coordinator, a runtime instead; Crimson's repair path never reaches them
+    const pf = OFFICE_STATE.meta.bridge?.feeds?.personal;
+    const runtimeText = !personal ? '' : !live ? 'TEST sample · no personal runtime is connected'
+      : pf?.state === 'ok' || pf?.state === 'attention' ? `Personal runtime · ${pf.note || 'connected'}`
+      : pf?.state === 'stale' ? 'Personal runtime · last check overdue'
+      : pf?.state === 'missing' ? `Personal runtime · ${pf.note || 'configured, not running'}` : 'Personal runtime · not connected';
     const jobRow = j => {
       const failed = j.ok === false;
+      const paused = failed && (OFFICE_STATE.meta.bridge?.commands?.repairPaused || []).includes(j.label); // the bridge stopped repeating automatic repairs for this job today
       const last = j.running ? 'running now' : j.lastAt ? `${whenShort(j.lastAt)} ${failed ? '✕' : j.ok ? '✓' : ''}` : '—';
       return `<li class="${failed ? 'fail' : ''}${j.running ? ' run' : ''}"><span class="pj-name">${esc(j.name)}</span><span class="pj-last">${esc(last.trim())}</span><span class="pj-next">${j.next ? 'next ' + esc(whenShort(j.next)) : ''}</span>
-          ${j.summary ? `<span class="${failed ? 'pj-why' : 'pj-note'}">${esc(j.summary)}</span>` : ''}${failed ? `<button type="button" class="linkbtn" data-office-command="repair" data-source="${esc(j.label)}" data-agent="${esc(a.id)}">Ask Crimson to repair</button>` : ''}</li>`;
+          ${j.summary ? `<span class="${failed ? 'pj-why' : 'pj-note'}">${esc(j.summary)}</span>` : ''}${paused ? '<span class="pj-why">Repeat failure · automatic repair paused for today; needs a look</span>' : ''}${failed && !personal ? `<button type="button" class="linkbtn" data-office-command="repair" data-source="${esc(j.label)}" data-agent="${esc(a.id)}">Ask Crimson to repair</button>` : failed && j.recoveryStep ? `<span class="pj-note">${esc(j.recoveryStep)}</span>` : ''}</li>`;
     };
     const jobsHtml = jobs.length ? `<h3 class="eyebrow">On the Studio</h3><ul class="p-jobs">${jobs.map(jobRow).join('')}</ul>` : '';
     const nextHtml = queued.length ? `<p class="p-next"><span class="eyebrow">Up next</span><span>${esc(queued[0].title)}${queued.length > 1 ? ` <span class="g-meta">+${queued.length - 1}</span>` : ''}</span></p>` : '';
@@ -613,17 +623,20 @@ const UI = {
     const ownersHtml=ownerRows.length ? `<h3 class="eyebrow">Codex schedules</h3><ul class="p-jobs">${ownerRows.map(r=>`<li><span class="pj-name">${esc(r.name)}</span><span>${esc(r.status.toLowerCase())}</span></li>`).join('')}</ul>` : '';
     const about = `<details class="p-about"${this.aboutOpen ? ' open' : ''}><summary>About ${esc(nm)}</summary>
         <p class="p-text">${esc(a.role || a.specialty)}</p>
-        <dl class="pa-facts"><div><dt>Connected owner</dt><dd>${esc(a.engine)}</dd></div>${a.systems.length ? `<div><dt>Systems</dt><dd>${a.systems.map(esc).join(' · ')}</dd></div>` : ''}</dl>
+        <dl class="pa-facts"><div><dt>${personal ? 'Runtime' : 'Connected owner'}</dt><dd>${esc(personal ? runtimeText : a.engine)}</dd></div>${personal ? '<div><dt>Scope</dt><dd>Personal only · outside Beyder&amp;Co. · nothing sent, booked or paid without Igor</dd></div>' : ''}${a.systems.length ? `<div><dt>Systems</dt><dd>${a.systems.map(esc).join(' · ')}</dd></div>` : ''}</dl>
         ${a.delivered.length ? `<span class="eyebrow">Delivered</span><ul class="delivered">${a.delivered.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
         ${a.held.length ? `<span class="eyebrow">Held</span><ul class="delivered held">${a.held.map(h => `<li><span>${esc(h.need)} <span class="g-meta">· held ${fmtTime(new Date(h.at))}</span></span></li>`).join('')}</ul>` : ''}
       </details>`;
     const detailLabel = gates.length ? 'Review & respond' : failing ? 'View failure details' : 'Details';
+    // no Ask Crimson for the study: the runtime's real state instead, never a dead control
+    const askHtml = personal ? `<span class="p-runtime" title="Configured on the Studio in config.json → personal_runtime">${esc(runtimeText)}</span>`
+      : `<button type="button" class="btn ink" data-office-command="instruction" data-agent="${esc(a.id)}">${a.id === 'crimson' ? 'Tell Crimson' : 'Ask Crimson'}</button>`;
     const escalated=a.id==='crimson' && typeof OFFICE_COMMAND_UI!=='undefined' ? OFFICE_COMMAND_UI.rows.filter(r=>r.state==='needs_igor') : [];
     const escalatedHtml=escalated.length ? `<p class="p-text"><b>${escalated.length} decision${escalated.length===1?'':'s'} for Igor</b> · ${esc(escalated[0].dependency)} <button class="linkbtn" data-office-command="respond" data-source="${esc(escalated[0].id)}">Answer Crimson</button></p>` : '';
     const body = `
         ${escalatedHtml}<div class="status p-summary-line"><span class="chip ${s.cls}"><span class="d" aria-hidden="true"></span></span><span>${esc(statusLine)}</span></div>
         <div class="source-age" title="${esc(sourceAgeText())}">${esc(sourceAgeSummary())}</div>
-        <div class="p-compact-actions"><button type="button" class="btn ink" data-office-command="instruction" data-agent="${esc(a.id)}">${a.id === 'crimson' ? 'Tell Crimson' : 'Ask Crimson'}</button><button type="button" class="btn" id="pExpand" data-act="panel-expand" data-label="${esc(detailLabel)}" aria-controls="pDetails" aria-expanded="false">${esc(detailLabel)}</button><button type="button" class="linkbtn" data-act="compose-toggle" aria-controls="pCompose" aria-expanded="false">Add reminder</button></div>
+        <div class="p-compact-actions">${askHtml}<button type="button" class="btn" id="pExpand" data-act="panel-expand" data-label="${esc(detailLabel)}" aria-controls="pDetails" aria-expanded="false">${esc(detailLabel)}</button><button type="button" class="linkbtn" data-act="compose-toggle" aria-controls="pCompose" aria-expanded="false">Add reminder</button></div>
         <div id="pDetails" hidden>${needsHtml}${failing && !gates.length ? '<p class="p-text">This job reported a failure. No approval is waiting for you here; its next scheduled run is shown below.</p>' : ''}${jobsHtml}${ownersHtml}${nextHtml}
         <h3 class="eyebrow p-recent-h">Recent${a.log.length > 3 ? `<button type="button" class="linkbtn" data-act="log-all">${this.logAll ? 'Less' : 'All'}</button>` : ''}</h3>
         <div class="logbox${this.logAll ? ' all' : ''}" id="logbox"><ol class="log" id="logList"></ol></div>
@@ -951,6 +964,11 @@ const UI = {
     if ((was === 'hudson') !== (name === 'hudson') && this._booted) this.updateInsets();
     document.querySelectorAll('.views button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === name)));
     if (name) $('#viewSelect').value = name === 'hotsheet' ? 'hotlist' : name;
+    const live = $('#viewLive');
+    if (live && name && was !== name) {
+      const opt = $('#viewSelect').querySelector(`option[value="${name === 'hotsheet' ? 'hotlist' : name}"]`);
+      live.textContent = opt ? 'View: ' + opt.textContent : '';
+    }
   },
   _ray: new THREE.Raycaster(),
   raycast(x, y) {
@@ -1273,7 +1291,9 @@ const UI = {
     mesh.getWorldQuaternion(q);
     mesh.getWorldScale(sc);
     const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
-    if (normal.dot(camera.position.clone().sub(center)) < 0) normal.negate(); // face the side we're looking from
+    const ud = mesh.userData || {};
+    if (!ud.frontOnly && normal.dot(camera.position.clone().sub(center)) < 0) normal.negate(); // face the side we're looking from
+    if (ud.focusYaw) normal.applyAxisAngle(new THREE.Vector3(0, 1, 0), ud.focusYaw); // come in off-axis (past a glass post)
     const w = Math.abs(size.x * sc.x), h = Math.abs(size.y * sc.y);
     const t = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
     const rect = renderer.domElement.getBoundingClientRect();
@@ -1394,7 +1414,7 @@ const UI = {
 
   /* ---------- add an agent ---------- */
   openAdd() {
-    if (OFFICE_STATE.order.length >= CAST_CAP) return this.toast('All ten desks are taken.');
+    if (deskAgents().length >= CAST_CAP) return this.toast('All ten desks are taken.');
     this.draft = { name: '', specialty: '', systems: '', engine: 'Display only', color: freeColors()[0], style: 'headset', instruction: '' };
     this.step = 0;
     $('#addModal').hidden = false;

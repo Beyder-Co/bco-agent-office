@@ -1,64 +1,6 @@
 /* Reference-based furniture. Models share the office's existing materials;
  * the photographs guide silhouette and joinery, never surface decals. */
 
-/** A closed, gently rounded laminated sheet with real thickness. */
-function furnitureSheet(surface, thickness, material, up, nu = 36, nv = 28) {
-  const pos = [], uv = [], idx = [], hint = new THREE.Vector3(...up);
-  const point = (u,v) => new THREE.Vector3(...surface(u,v));
-  let flip = false;
-  for (let j=0;j<=nv;j++) for(let i=0;i<=nu;i++) {
-    const u=i/nu*2-1, v=j/nv*2-1, p=point(u,v), e=.001;
-    const du=point(Math.min(1,u+e),v).sub(point(Math.max(-1,u-e),v));
-    const dv=point(u,Math.min(1,v+e)).sub(point(u,Math.max(-1,v-e)));
-    const normal=du.cross(dv).normalize();
-    if(i===nu/2 && j===nv/2) flip=normal.dot(hint)<0;
-    if(normal.dot(hint)<0) normal.negate();
-    pos.push(...p.toArray(),...p.clone().addScaledVector(normal,-thickness).toArray());
-    uv.push((u+1)*.65,(v+1)*.65,(u+1)*.65,(v+1)*.65);
-  }
-  const tri=(a,b,c)=>idx.push(a,flip?c:b,flip?b:c);
-  for(let j=0;j<nv;j++) for(let i=0;i<nu;i++) {
-    const a=2*(j*(nu+1)+i), b=a+2, c=a+2*(nu+1), d=c+2;
-    tri(a,b,c);tri(b,d,c);tri(a+1,c+1,b+1);tri(b+1,c+1,d+1);
-  }
-  const rim=(a,b)=>{tri(a,a+1,b);tri(b,a+1,b+1);};
-  for(let i=0;i<nu;i++){rim(2*i,2*(i+1));rim(2*(nv*(nu+1)+i+1),2*(nv*(nu+1)+i));}
-  for(let j=0;j<nv;j++){rim(2*((j+1)*(nu+1)),2*(j*(nu+1)));rim(2*(j*(nu+1)+nu),2*((j+1)*(nu+1)+nu));}
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();
-  const mesh=new THREE.Mesh(geo,material);mesh.userData.noCollide=true;return mesh;
-}
-
-/** Bent, tapered oak ribbon: the front pair are one flowing support, with one rear leg. */
-function oakRibbon(points, width, depth) {
-  const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));
-  const rows=curve.getPoints(30).map((p,i)=>({p:p.toArray(),a:width*(.64+.36*Math.sin(Math.PI*i/30)),b:depth}));
-  const mesh=new THREE.Mesh(superLoft(rows,{U:[1,0,0],n:3.2,segs:16,uvPlane:'xy',uvScale:2}),MAT.oak);mesh.userData.noCollide=true;return mesh;
-}
-
-function referenceShellChair() {
-  const g=new THREE.Group();g.name='crimson-oak-shell-chair';g.userData.keep=true;
-  const seat=(u,v)=>{const w=.455-.035*v*v+.015*v;return [u*w,READ_SEAT-.055+.155*Math.pow(Math.abs(u),2.4)+.012*v*v-.012*v,.04+v*.285];};
-  const back=(u,v)=>{const t=(v+1)/2,w=.295+.045*Math.sin(Math.PI*t)-.015*t;return [u*w,READ_SEAT+.02+t*.44-.045*Math.pow(Math.abs(u),6)*Math.pow(t,5),-.20-t*.235+.045*u*u];};
-  g.add(furnitureSheet(seat,.022,MAT.oak,[0,1,0]));
-  g.add(furnitureSheet(back,.022,MAT.oak,[0,0,1]));
-  // Padded black areas in the reference become crimson leather; wing tips remain exposed oak.
-  const cushion=(u,v)=>{const vv=v*.86,uu=u*(.76-.06*Math.pow(Math.abs(v),6)),p=seat(uu,vv);p[1]+=.037+.008*(1-u*u)*(1-v*v);return p;};
-  const backPad=(u,v)=>{const p=back(u*.91,v*.92);p[2]+=.041+.008*(1-u*u)*(1-v*v);return p;};
-  g.add(furnitureSheet(cushion,.032,CRIMSON_UPH,[0,1,0]));
-  g.add(furnitureSheet(backPad,.034,CRIMSON_UPH,[0,0,1]));
-  // Two splayed front feet flow into the under-seat rail; the third leg rises up the back.
-  for(const side of [-1,1]) g.add(oakRibbon([[side*.39,.015,.31],[side*.36,.24,.24],[side*.30,.388,.16],[side*.18,.35,.10],[0,.341,.06]],.035,.016));
-  g.add(oakRibbon([[0,.015,-.49],[0,.27,-.38],[0,.36,-.26],[0,.47,-.255],[0,.66,-.34]],.065,.019));
-  // Recessed silver fixings on the exposed plywood back, as in the rear reference.
-  for(const u of [-.67,.67]) for(const v of [-.5,.6]) {
-    const p=back(u,v);const fixing=new THREE.Mesh(new THREE.SphereGeometry(.005,10,6),MAT.aluDark);fixing.scale.z=.35;fixing.position.set(p[0],p[1],p[2]-.024);fixing.userData.noCollide=true;g.add(fixing);
-  }
-  addProxy(g,.70,.08,.54,0,READ_SEAT-.05,.035);
-  addProxy(g,.60,.42,.07,0,READ_SEAT+.24,-.315,-.48);
-  for(const [x,z] of [[-.39,.31],[.39,.31],[0,-.49]]) addProxy(g,.065,.33,.065,x,.18,z);
-  g.add(placed(contactShadow(1.1,1.1,.3),0,.006,0));return shadowAll(g,true,true);
-}
-
 /** Match fabric grain in metres on top, side and back surfaces. */
 function upholsteryUV(geometry, scale=[1,1,1]) {
   const g=geometry.index?geometry.toNonIndexed():geometry, p=g.getAttribute('position'),uv=[];

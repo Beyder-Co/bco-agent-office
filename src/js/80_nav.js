@@ -74,7 +74,7 @@ function buildNav() {
   rowNodes('B', BZ, bk);
 
   // the front aisle, from the lounge to the east glass
-  const fr = [['L1', -6.55], ['F_lc', -4.75], ['F_read', ROOM.reading.x], ['F_e', 7.15]];
+  const fr = [['L1', -6.55], ['F_lc', -4.75], ['F_study', ROOM.study.x], ['F_e', 7.15]];
   frontCor.forEach((x, k) => fr.push(['F_kf' + k, x]));
   front.forEach(i => fr.push(['F_x' + i, S[i].x + ex]));
   rowNodes('F', FZ, fr);
@@ -118,6 +118,16 @@ function buildNav() {
     navLink(id, back.includes(i) ? 'M_x' + i : 'F_x' + i);
     SLOT_EXIT[i] = id;
   });
+  // the study's two seats (slots 10 and 11) leave past the outer end of their desk, down to the front aisle
+  ROOM.study.seats.forEach((s, k) => {
+    const i = 10 + k, side = k === 0 ? -1 : 1;
+    const x = s.x + side * ROOM.study.glass.exit; // through the gap at either end of the study's glass
+    navNode('X' + i, x, s.z);
+    navNode('F_s' + k, x, FZ);
+    navLink('X' + i, 'F_s' + k);
+    navLink('F_s' + k, k === 0 ? 'F_study' : 'F_e');
+    SLOT_EXIT[i] = 'X' + i;
+  });
 }
 
 /** Dijkstra over the little graph; returns node ids. */
@@ -156,8 +166,8 @@ const frontOf = (s, d = 0.56) => [s.x + Math.sin(s.face) * d, s.z + Math.cos(s.f
  * No one walks into a seat or out of one.
  */
 const SEAT_FRONT = 0.45;
-/** The standing spot's distance for a seat: deeper seats (the lounge's armchairs and sofa, the reading chairs) need more. */
-const seatFront = s => s.front || (s.area === 'lounge' ? (s.face <= 0 ? 0.82 : 0.62) : s.area === 'reading' ? 0.72 : SEAT_FRONT);
+/** The standing spot's distance for a seat: deeper seats (the lounge's armchairs and sofa) need more. */
+const seatFront = s => s.front || (s.area === 'lounge' ? (s.face <= 0 ? 0.82 : 0.62) : SEAT_FRONT);
 
 /** Places an idle agent may visit: where to sit or stand, how to face, what they do there, and the way in. */
 const DESTINATIONS = {
@@ -180,11 +190,6 @@ const DESTINATIONS = {
       const sofa = ROOM_OBJ.loungeSeats.filter(o => o.face > 0);
       return [[-6.2, 3.45], ...sofa.slice(0, sofa.indexOf(s) + 1).map(o => frontOf(o, 0.75)), frontOf(s, seatFront(s))];
     },
-  },
-  reading: {
-    node: 'F_read', seats: () => ROOM_OBJ.readingSeats, label: 'In the reading corner', pose: 'sofa', log: 'Reading corner — reviewing notes',
-    // down between the two chairs, then to the front of the one chosen
-    approach: s => [[ROOM.reading.x + 0.05, 3.72], [ROOM.reading.x + 0.05, 4.4], frontOf(s, seatFront(s))],
   },
   board: {
     node: ['I_b1', 'I_b2', 'I_b3'], seats: () => ROOM_OBJ.boardSeats.filter(s => s.side), label: 'In the Market Room', pose: 'meet', log: 'Market Room — reading the pipeline',
@@ -822,8 +827,9 @@ const MOVE = {
   },
 };
 
-/** World point of a slot's seat. */
-const slotSeat = i => [ROOM.slots[i].x, ROOM.slots[i].z];
+/** World point of a slot's seat (the ten desks, then the study's two). */
+const slotAt = i => (i >= 10 ? ROOM.study.seats[i - 10] : ROOM.slots[i]);
+const slotSeat = i => [slotAt(i).x, slotAt(i).z];
 
 /** Points from a slot seat out to its aisle node, then on to a node id. */
 function routeFromSeat(slot, toNode) {

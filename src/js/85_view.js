@@ -24,14 +24,14 @@ const VIEWS = {
   hotlist: { target: [-5.2, 1.65, -6.15], r: 6.0, theta: 0.0, phi: 1.45 },
   datawall: { target: [7.9, 1.64, 1.4], r: 9, theta: -HALF_PI, phi: 1.42 },
   lounge: { target: [-5.65,.72,4.55], r: 6.3, theta: .18, phi: 1.12 },
-  reading: { target: [5.0,.72,4.5], r: 5.2, theta: .15, phi: 1.14 },
+  study: { target: [5.6, 1.0, 4.9], r: 6.0, theta: 3.05, phi: 1.0 }, // from the front aisle at working height: the glass screen, the two desks, the console and the mail tray; the sculpture and the crew's nearest desk stay out of frame
   server: { target: [ROOM.server.cx, 1.3, ROOM.server.cz], r: 3.5, theta: 1.12, phi: 1.3 }, // face-on to the corner cabinet
   sculpture: { target: [1.6, 0.8, 4.75], r: 4.6, theta: 0, phi: 1.42 }, // square on, as you look in toward the Forum screen
   // the establishing shot: the office on the Palisades, the Hudson and the bridge below, Manhattan across the river
   hudson: { target: [1, 1.2, -1], r: 60, theta: -0.66, phi: 1.45 },
 };
 /** Presets whose distance is fitted to the free screen area on every resize. */
-const FITTED = ['overview', 'desks', 'boardroom', 'door', 'screen', 'hotsheet', 'hotlist', 'datawall', 'lounge', 'reading', 'server'];
+const FITTED = ['overview', 'desks', 'boardroom', 'door', 'screen', 'hotsheet', 'hotlist', 'datawall', 'lounge', 'study', 'server'];
 
 function fitView(name, pts, availW, availH, fill = 0.96) {
   const v = VIEWS[name];
@@ -75,7 +75,7 @@ function fitAllViews(aw, ah) {
   fitOverview(aw, ah);
   fitDesks(aw, ah);
   fitView('lounge', boxPoints(-8.05,-3.25,0,1.7,3.05,5.8),aw,ah,.88);
-  fitView('reading', boxPoints(3.65,6.35,0,1.7,3.4,5.25),aw,ah,.88);
+  fitView('study', boxPoints(4.0, ROOM.study.inlay.x1, 0, 2.35, ROOM.study.inlay.z0, ROOM.study.inlay.z1), aw, ah, .86); // to 2.35: the glass caps and the name bubbles stay inside
   fitView('server', boxPoints(ROOM.server.cx-.7,ROOM.server.cx+.7,0,2.45,ROOM.server.cz-.75,ROOM.server.cz+.75),aw,ah,.90);
   fitView('boardroom', boxPoints(3.4, 8.0, 0, 3.0, -6.2, -3.6), aw, ah, 0.96);
   fitView('door', boxPoints(-10.75, -6.9, 0, 3.0, -1.7, 1.95), aw, ah, 0.94);
@@ -100,7 +100,7 @@ function fitAllViews(aw, ah) {
 }
 /** Desks: every occupied desk with its rug and the label above its agent, centred on the group. */
 function fitDesks(availW, availH) {
-  const slots = OFFICE_STATE.order.map(id => ROOM.slots[OFFICE_STATE.agents[id].slot]);
+  const slots = OFFICE_STATE.order.filter(id => !OFFICE_STATE.agents[id].zone).map(id => ROOM.slots[OFFICE_STATE.agents[id].slot]); // the crew's desks; the study has its own view
   if (!slots.length) return VIEWS.desks.r;
   const xs = slots.map(s => s.x), zs = slots.map(s => s.z);
   VIEWS.desks.target = [(Math.min(...xs) + Math.max(...xs)) / 2 + 0.25, 0.8, (Math.min(...zs) + Math.max(...zs)) / 2 + 0.1];
@@ -117,9 +117,10 @@ const viewOf = name => {
 };
 
 function seatAgent(a) {
-  const slot = ROOM.slots[a.slot];
+  const slot = slotAt(a.slot);
   const L = a.look;
-  const st = new Station({ id: a.id, name: a.name, specialty: a.specialty, color: L.color, seed: 3 + a.slot * 7, screen: L.screen, prop: L.prop });
+  const study = a.slot >= 10; // the study's desks face the room and share one stone floor: no round rug, a different turn
+  const st = new Station({ id: a.id, name: a.name, specialty: a.specialty, color: L.color, seed: 3 + a.slot * 7, screen: L.screen, prop: L.prop, rug: !study, yaw: study ? ROOM.study.yaw : undefined });
   st.group.position.set(slot.x, 0, slot.z);
   st.group.traverse(o => o.isMesh && (o.userData.agentId = a.id));
   scene.add(st.group);
@@ -146,19 +147,19 @@ const VIEW = {
     this.initScreens();
     BUS.on('agent', a => {
       this.sync(a.id);
-      this.dirty('main');
+      this.dirty('main', 'study');
       this.rackDirty = true;
     });
     BUS.on('approval', ev => {
-      this.dirty('main');
+      this.dirty('main', 'study');
       if (ev && ev.type === 'request') {
         LIFE.gateFlash = performance.now(); // a gate arriving lights the "Needs you" block
         lifePing('main');
         lifeAnimate('main', performance.now() + 2700);
       }
     });
-    BUS.on('task', () => this.dirty('main'));
-    BUS.on('meta', () => this.dirty('main', 'hotnew', 'hotdone', 'today', 'pipeline', 'ticker'));
+    BUS.on('task', () => this.dirty('main', 'study'));
+    BUS.on('meta', () => this.dirty('main', 'hotnew', 'hotdone', 'today', 'pipeline', 'ticker', 'study'));
     BUS.on('hotsheet', ev => {
       this.dirty('hotnew', 'hotdone');
       lifePing('hotnew');
@@ -227,7 +228,7 @@ const VIEW = {
     for (const id of OFFICE_STATE.order) {
       const w = WORLD.byId[id];
       if (!w) continue;
-      w.st.lookYaw = OFFICE_STATE.agents[id].status === 'WAITING' ? clamp(wrapAngle(th - STATION_YAW), -1.15, 1.15) : 0;
+      w.st.lookYaw = OFFICE_STATE.agents[id].status === 'WAITING' ? clamp(wrapAngle(th - w.st.group.rotation.y), -1.15, 1.15) : 0; // in the station's own frame (the study's desks face the room)
     }
     // screens redraw on change, when focus changes, and at least every 20 s for their clocks
     const now = performance.now();
@@ -275,7 +276,10 @@ const VIEW = {
       const c = makeCanvas(W, H);
       const tex = canvasTexture(c);
       tex.minFilter = THREE.LinearMipmapLinearFilter;
-      obj.face.material = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+      // the study's board is a transparent LED glass: read from the room, seen through from the floor cameras behind it
+      obj.face.material = key === 'study'
+        ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, transparent: true, opacity: 0.86, side: THREE.DoubleSide, depthWrite: false })
+        : new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
       const ctx = c.getContext('2d');
       this.screens[key] = {
         key, canvas: c, ctx, tex, W, H, face: obj.face, last: 0, dirty: true,
@@ -293,7 +297,7 @@ const VIEW = {
       mk('hotnew', ROOM_OBJ.hotlist.hotnew, hotWidth, 936, (g, W, H, d) => drawHotList('new', g, W, H, d));
       mk('hotdone', ROOM_OBJ.hotlist.hotdone, hotWidth, 936, (g, W, H, d) => drawHotList('done', g, W, H, d));
     }
-    for (const p of ROOM_OBJ.panels || []) mk(p.key, p, 2048, 1152, p.key === 'pipeline' ? drawPipeline : p.key === 'today' ? drawNeeds : drawTodayLeads);
+    for (const p of ROOM_OBJ.panels || []) mk(p.key, p, 2048, p.key === 'study' ? Math.round(2048 * ROOM.study.board.h / ROOM.study.board.w) : 1152, p.key === 'pipeline' ? drawPipeline : p.key === 'today' ? drawNeeds : p.key === 'study' ? drawStudyBoard : drawTodayLeads);
     // the strip's own aspect; a long strip gets a wider canvas so its words stay sharp (a full-wall strip: 8192 wide)
     const tkAsp = ROOM_OBJ.ticker ? ROOM_OBJ.ticker.w / ROOM_OBJ.ticker.h : 7;
     const TKW = Math.min(tkAsp > 12 ? 8192 : tkAsp > 8 ? 4096 : 2048, renderer.capabilities.maxTextureSize || 4096);
@@ -888,6 +892,84 @@ function drawNeeds(ctx, W, H, detail) {
   if (items.length > shown.length) scText(ctx, `+ ${items.length - shown.length} more — click the screen for the full list`, M + 230, top + 70 + shown.length * rh, 34, SC.dim, 500, W - 2 * M);
 }
 
+/* ---------- the study's board: the personal pair's open and closed work, and what needs Igor ---------- */
+
+/** The study's board. Everything on it comes from OFFICE_STATE (tasks, approvals, held items, the personal feed);
+ *  the header says TEST or the runtime's real state, so the board never claims more than the cards do. */
+function drawStudyBoard(ctx, W, H, detail) {
+  hitReset('study');
+  const M = 72;
+  const feed = OFFICE_STATE.meta.feed, sample = feed === 'simulated';
+  const pf = OFFICE_STATE.meta.bridge && OFFICE_STATE.meta.bridge.feeds && OFFICE_STATE.meta.bridge.feeds.personal;
+  const ids = OFFICE_STATE.order.filter(id => OFFICE_STATE.agents[id].zone === 'personal');
+  const mine = t => ids.includes(t.agentId);
+  const tasks = OFFICE_STATE.tasks.filter(mine);
+  const open = tasks.filter(t => t.column !== 'done');
+  const day = etDay();
+  const doneToday = ids.reduce((n, id) => n + (OFFICE_STATE.stats.finishedByAgentDay[day + ':' + id] || 0), 0);
+  const needs = OFFICE_STATE.approvals.filter(mine), held = OFFICE_STATE.held.filter(mine);
+  ctx.fillStyle = SC.bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  // header: the runtime's state, in its own words
+  // the header says exactly what the bridge says about the personal runtime (the same source as the cards)
+  const F = sample ? { status: 'awaiting', note: 'TEST sample · no personal runtime is connected' }
+    : feed === 'offline' ? { status: 'error', note: 'Studio bridge offline · showing the last known state' }
+    : !pf ? { status: 'awaiting', note: 'Personal runtime not configured' }
+    : pf.state === 'ok' ? { status: 'live', asOf: pf.asOf ? new Date(pf.asOf).getTime() : null }
+    : pf.state === 'stale' ? { status: 'stale', note: 'personal runtime · last check overdue' }
+    : { status: 'error', note: pf.note || (pf.state === 'attention' ? 'Personal runtime · needs a look' : 'Personal runtime · not connected') };
+  scHeader(ctx, W, M, 'The study', F, detail ? 72 : 84, 'Personal · outside Beyder&Co. · nothing sent, booked or paid without Igor');
+  if (sample) scEyebrow(ctx, 'TEST · sample data', W - M, M + 112, 22, SC.dim, 5, 'right');
+  const top = 250;
+  scRule(ctx, M, W - M, top - 36);
+  // three figures: open, done today, needs Igor
+  const cols = [['Open', open.length, SC.ink], ['Done today', doneToday, SC.ink], ['Needs Igor', needs.length, needs.length ? BRAND.crimson : SC.ink]];
+  const cw = (W - 2 * M) / 3;
+  cols.forEach(([label, n, col], i) => {
+    const x = M + i * cw;
+    scText(ctx, String(n), x, top + 128, 150, col, 600);
+    scEyebrow(ctx, label, x + 4, top + 172, 26, SC.dim, 5);
+  });
+  scRule(ctx, M, W - M, top + 212);
+  // two columns, one per assistant: in progress first, then queued, then today's done
+  const y0 = top + 296, half = (W - 2 * M - 60) / 2, rh = 82;
+  ids.slice(0, 2).forEach((id, k) => {
+    const a = OFFICE_STATE.agents[id], x = M + k * (half + 60);
+    const nm = a.name.charAt(0) + a.name.slice(1).toLowerCase();
+    scText(ctx, nm, x, y0, 52, SC.ink, 600, half);
+    scText(ctx, a.specialty, x + ctx.measureText(nm).width + 28, y0, 30, SC.dim, 500, half - 300);
+    const rows = tasks.filter(t => t.agentId === id).sort((p, q) => ({ progress: 0, queued: 1, done: 2 }[p.column] - { progress: 0, queued: 1, done: 2 }[q.column]) || (q.at || 0) - (p.at || 0));
+    const maxRows = Math.floor((H - y0 - 60 - (needs.length || held.length ? 150 : 0)) / rh) - 1;
+    rows.slice(0, Math.max(1, maxRows)).forEach((t, i) => {
+      const y = y0 + 84 + i * rh;
+      const mark = t.column === 'progress' ? '●' : t.column === 'queued' ? '○' : '✓';
+      const col = t.column === 'done' ? SC.dim : SC.ink;
+      scText(ctx, mark, x, y, 34, t.column === 'progress' ? BRAND.crimson : col, 600, 44);
+      scText(ctx, t.title || '', x + 52, y, 40, col, t.column === 'done' ? 500 : 600, half - 52);
+      if (t.note && t.column !== 'done') scText(ctx, t.note, x + 52, y + 32, 26, SC.dim, 500, half - 52);
+    });
+    if (!rows.length) scText(ctx, sample ? 'Nothing queued' : 'No personal work reported', x, y0 + 84, 34, SC.dim, 500, half);
+    if (rows.length > maxRows) scText(ctx, `+ ${rows.length - maxRows} more`, x, y0 + 84 + maxRows * rh, 28, SC.dim, 500, half);
+  });
+  // what needs Igor, and what he held
+  if (needs.length || held.length) {
+    const y = H - 120;
+    scRule(ctx, M, W - M, y - 60);
+    const first = needs[0] || null;
+    if (first) {
+      const nm = (OFFICE_STATE.agents[first.agentId] || { name: '' }).name;
+      scEyebrow(ctx, 'Needs you', M, y - 10, 24, BRAND.crimson, 5);
+      scText(ctx, first.need, M + 220, y, 34, SC.ink, 600, W - 2 * M - 220 - 300);
+      scText(ctx, (nm.charAt(0) + nm.slice(1).toLowerCase()) + (needs.length > 1 ? ` · +${needs.length - 1} more` : ''), W - M, y, 28, SC.dim, 500, 300, 'right');
+    } else {
+      scEyebrow(ctx, 'Held', M, y - 10, 24, SC.dim, 5);
+      scText(ctx, `${held.length} step${held.length === 1 ? '' : 's'} held by Igor · ${held[0].need}`, M + 160, y, 30, SC.dim, 500, W - 2 * M - 160);
+    }
+  }
+}
+
 /** What a gate asks for, in the room's words: its subject, the action itself, and up to two facts (from gateBrief when there is one). */
 function gateText(g) {
   const B = typeof gateBrief === 'function' ? gateBrief(g) : null;
@@ -1147,7 +1229,7 @@ const TICK_TYPE = 0.62; // the ticker's type against the strip's height
 const TICK_COL = { view: '#e8eaee', save: '#c9ced6', inquiry: BRAND.crimson, lead: '#ffffff', rate: '#9aa3ad' };
 function tickerItems() {
   const T = OFFICE_STATE.ticker;
-  return T && T.status !== 'awaiting' ? T.items || [] : [];
+  return T && (T.status !== 'awaiting' || T.sample) ? T.items || [] : []; // the TEST layout shows its rows as a sample, never as stale data
 }
 /** Builds the long strip the ring scrolls through (once per update from the bridge). A market item reads
  *  LABEL  value  ▲3 bp  Oct 30; a change of group (bonds, then mortgage rates) gets its own crimson mark. */
@@ -1159,7 +1241,8 @@ function buildTickerStrip() {
   const parts = [];
   if (!items.length) parts.push({ runs: [[T.status === 'awaiting' ? 'Bond market and mortgage rates appear here from the Studio' : T.note || 'Market data unavailable — retrying', 0.5, '#9a9da3', 500, 0]] });
   else {
-    if (T.status === 'stale' || T.status === 'error') parts.push({ runs: [[T.note || 'Showing the last market data', 0.4, SC.amber, 500, 0]] });
+    if (T.sample) parts.push({ runs: [[T.note || 'TEST layout · live on the Studio', 0.4, '#8d9198', 500, 0]] });
+    else if (T.status === 'stale' || T.status === 'error') parts.push({ runs: [[T.note || 'Showing the last market data', 0.4, SC.amber, 500, 0]] });
     let group = null;
     for (const it of items) {
       if (it.kind === 'rate' && it.label) {
@@ -1171,8 +1254,9 @@ function buildTickerStrip() {
         runs.push([it.label.toUpperCase(), 0.34, '#a7abb2', 600, 0.1]);
         runs.push([it.value, 0.6, '#ffffff', 600, 0]);
         if (it.move) runs.push([it.move, 0.42, it.dir > 0 ? BRAND.crimson : it.dir < 0 ? '#c9ced6' : '#8d9198', 600, 0]);
-        if (it.asOf) runs.push([it.asOf, 0.3, '#6c7076', 500, 0.04]);
-        if (it.stale || OFFICE_STATE.ticker.status !== 'live') runs.push(['STALE',0.34,BRAND.crimson,700,0.05]);
+        if (it.asOf && !T.sample) runs.push([it.asOf, 0.3, '#6c7076', 500, 0.04]);
+        if (T.sample) runs.push(['TEST', 0.3, '#8d9198', 600, 0.05]); // once: the sample's date is the word TEST
+        else if (it.stale || OFFICE_STATE.ticker.status !== 'live') runs.push(['STALE',0.34,BRAND.crimson,700,0.05]);
         parts.push({ runs });
       } else parts.push({ runs: [[it.text, 0.5, '#e8eaee', 500, 0]] });
     }

@@ -6,7 +6,7 @@
      west wall   white-oak built-in (library, Surfaces samples) | glass | door | glass
      NE          the Market Room behind frameless glass: table, holographic Bergen County, the hot sheet
      centre      two rows of white-oak workstations (ten slots, eight seated)
-     SW          lounge round a turning holographic house · SE reading corner · a tree bench up front
+     SW          lounge round a turning holographic house · SE the study, behind glass (Igor's two personal assistants) · a tree bench up front
    Glass on all four sides (the south is the camera's side: four wide panes); the slab edge reads as a section.
    ============================================================================= */
 
@@ -29,7 +29,14 @@ const ROOM = {
   board: { x0: 3.4, zEdge: -2.85, tx: 5.85, tz: -4.55 },
   forum: { z: -4.35, xs: [-0.95, 0.95] },
   lounge: { x: -5.6, z: 4.55 },
-  reading: { x: 5.0, z: 4.5 },
+  /** The study: two standard workstations facing the room, on a dark stone inlay in the front-right corner, with a console against
+   *  the east glass. seats[] are slots 10 and 11, reserved for Igor's personal assistants; business agents never take them. */
+  study: { x: 5.2, z: 4.95, yaw: Math.PI, inlay: { x0: 3.0, x1: 7.75, z0: 3.55, z1: 5.72 }, console: { x: 7.5, z: 4.7, w: 0.4, d: 1.5 },
+    /** The glass: a 2.25 m screen along the aisle side between x0 and x1, open at both ends (the two ways in), and a return down the west side. */
+    glass: { h: 2.25, run: { x0: 4.05, x1: 6.35 }, exit: 1.05 },
+    /** The board: a wide screen on a low graphite plinth behind the two desks, facing the room, below the ticker band. */
+    board: { x: 5.2, z: 5.66, w: 3.4, h: 1.9, y0: 0.5 },
+    seats: [{ x: 4.45, z: 4.95 }, { x: 5.95, z: 4.95 }] },
   tree: { x: 1.6, z: 4.75 }, // the sculpture of the mark, front middle
   /** Ten desk slots; the last two are reserved for agents who join later. */
   slots: [
@@ -228,7 +235,7 @@ function buildRoom(imgs = {}) {
   buildDataWall(room);
 
   buildLounge(room);
-  buildReading(room);
+  buildStudy(room);
   buildVestibule(room);
 
   // living things: flowers either side of the Forum screen, a kentia palm in the corner, the tree bench
@@ -238,9 +245,7 @@ function buildRoom(imgs = {}) {
   const f2 = PLANTS.bloom(8, 1.05, 'tall');
   f2.position.set(2.78, 0, z0 + 0.42);
   room.add(f2);
-  const ol = PLANTS.kentia(5, 1.15, { limit: { x0: -1.0, x1: 1.6, z0: -1.0, z1: 0.36 } }); // (its fronds stay off the glass to the south)
-  ol.position.set(6.3, 0, 5.38);
-  room.add(ol);
+  // (the corner kentia that stood here went with the reading corner: the study's console carries its own bowl)
   buildSculpture(room);
 
   shadowAll(room, true, true);
@@ -1418,80 +1423,158 @@ function buildLounge(room) {
   room.add(g);
 }
 
-/* ---------- the reading corner: two crimson lounge chairs, a stone side table, roses ---------- */
+/* ---------- the study: Igor's two personal assistants, front-right, on their own stone floor ---------- */
 
-// lit surfaces brighten the albedo, so it is set darker to read as #a70008 on screen
-const CRIMSON_UPH = new THREE.MeshPhysicalMaterial({ color: lin('#a70008').multiplyScalar(0.5), roughness: 0.62, clearcoat: 0.15, clearcoatRoughness: 0.5, envMapIntensity: 0.35, fog: false });
-/** Honey travertine for the reading corner's side table: darker and warmer, so it reads against the white rug. */
-const TRAVERTINE_HONEY_TEX = (() => {
-  const c = makeCanvas(512, 512);
+/** Honed dark limestone for the study's floor inlay: the one place the floor changes, so the personal zone reads from across the room. */
+const STUDY_STONE_TEX = (() => {
+  const c = makeCanvas(1024, 1024);
   const ctx = c.getContext('2d');
-  const rnd = seeded(67);
-  ctx.fillStyle = '#b8955f';
-  ctx.fillRect(0, 0, 512, 512);
-  // the stone's long bedding, light and dark, then its open pores
-  for (let i = 0; i < 46; i++) {
-    ctx.fillStyle = `rgba(${rnd() < 0.5 ? '226,198,148' : '128,98,58'},${0.05 + rnd() * 0.08})`;
-    ctx.fillRect(0, rnd() * 512, 512, 2 + rnd() * 18);
-  }
-  for (let i = 0; i < 1100; i++) {
-    ctx.fillStyle = `rgba(86,62,32,${0.18 + rnd() * 0.32})`;
+  const rnd = seeded(91);
+  ctx.fillStyle = '#56565a';
+  ctx.fillRect(0, 0, 1024, 1024);
+  // soft clouding and a few pale fossil flecks, as in a honed Belgian blue
+  for (let i = 0; i < 90; i++) {
+    const g = ctx.createRadialGradient(rnd() * 1024, rnd() * 1024, 0, 0, 0, 0);
+    ctx.fillStyle = `rgba(${rnd() < 0.5 ? '70,71,74' : '58,58,60'},${0.08 + rnd() * 0.1})`;
     ctx.beginPath();
-    ctx.ellipse(rnd() * 512, rnd() * 512, 0.6 + rnd() * 2.6, 0.5 + rnd() * 1.3, 0, 0, TAU);
+    ctx.ellipse(rnd() * 1024, rnd() * 1024, 60 + rnd() * 260, 30 + rnd() * 140, rnd() * Math.PI, 0, TAU);
+    ctx.fill();
+  }
+  for (let i = 0; i < 420; i++) {
+    ctx.fillStyle = `rgba(190,188,182,${0.06 + rnd() * 0.16})`;
+    ctx.beginPath();
+    ctx.ellipse(rnd() * 1024, rnd() * 1024, 0.6 + rnd() * 2.2, 0.4 + rnd() * 1.1, rnd() * Math.PI, 0, TAU);
     ctx.fill();
   }
   return canvasTexture(c, { repeat: true });
 })();
-const TRAVERTINE_HONEY = new THREE.MeshStandardMaterial({ map: TRAVERTINE_HONEY_TEX, roughness: 0.62, metalness: 0, envMapIntensity: 0.45, fog: false });
+const STUDY_STONE = new THREE.MeshStandardMaterial({ map: STUDY_STONE_TEX, roughness: 0.42, metalness: 0, envMapIntensity: 0.6, fog: false });
 
-/** An original lounge chair (seat 41 cm): splayed white-oak legs, an oak apron, a crimson seat and an enveloping crimson back. */
-const READ_SEAT = 0.41;
-function readingChair() { return referenceShellChair(); }
-
-/** A side table of stacked stone spheres under a round top. */
-function sphereTable() {
+/** The mail tray on the console: an aluminium tray whose stack of paper is only ever as tall as the personal queue it mirrors. */
+function mailTray() {
   const g = new THREE.Group();
-  const balls = [[0.13, 0.0, 0.0], [0.082, 0.05, 0.018], [0.066, -0.018, -0.006]];
-  let y = 0;
-  balls.forEach(([r, x, z], i) => {
-    const b = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 24), TRAVERTINE_HONEY);
-    // Account for the sideways offset so adjacent stones actually meet.
-    y += i === 0 ? r : Math.sqrt(Math.pow((r + balls[i - 1][0]) * 0.96, 2) - Math.pow(x - balls[i - 1][1], 2) - Math.pow(z - balls[i - 1][2], 2));
-    b.position.set(x, y, z);
-    g.add(b);
-  });
-  const topY = y + balls[2][0] * 0.95;
-  g.add(placed(new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.03, 56), TRAVERTINE_HONEY), 0, topY + 0.015, 0));
-  g.userData.top = topY + 0.03;
-  g.add(placed(contactShadow(0.7, 0.7, 0.3), 0, 0.005, 0));
-  return shadowAll(g, true, true);
+  g.add(placed(new THREE.Mesh(roundedBoxGeometry(0.34, 0.008, 0.25, 0.003, 2), MAT.aluDark), 0, 0.004, 0));
+  for (const sx of [-1, 1]) g.add(placed(new THREE.Mesh(roundedBoxGeometry(0.008, 0.055, 0.25, 0.002, 1), MAT.aluDark), sx * 0.166, 0.0315, 0));
+  g.add(placed(new THREE.Mesh(roundedBoxGeometry(0.34, 0.055, 0.008, 0.002, 1), MAT.aluDark), 0, 0.0315, -0.121));
+  // the stack: scaled in y by the queue, nothing shown when there is nothing
+  const stack = new THREE.Mesh(roundedBoxGeometry(0.297, 1, 0.21, 0.001, 1), PAPER);
+  stack.position.set(0, 0.008, 0.005);
+  stack.scale.y = 0.0001;
+  stack.visible = false;
+  stack.geometry.translate(0, 0.5, 0);
+  g.add(stack);
+  g.userData.stack = stack;
+  g.traverse(o => o.isMesh && (o.userData.noCollide = true));
+  return shadowAll(g, true, false);
 }
 
-/** Front-right: the reading corner. */
-function buildReading(room) {
-  const R = ROOM.reading;
+/** Front-right: the study. Two standard workstations side by side facing the room, on a dark stone inlay, with a slim oak console
+ *  against the east glass. Business robots never sit here; it belongs to Igor's two personal assistants. */
+function buildStudy(room) {
+  const S = ROOM.study, I = S.inlay;
   const g = new THREE.Group();
-  const rug = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.01, 72), MAT.fabricLight);
-  rug.position.set(R.x, 0.005, R.z);
-  g.add(rug);
-  ROOM_OBJ.readingChairs = [];
-  const seats = [[R.x - 0.65, R.z - 0.45, 0.75], [R.x + 0.75, R.z - 0.25, -0.6]];
-  for (const [x, z, rot] of seats) {
-    const ch = readingChair();
-    ROOM_OBJ.readingChairs.push(ch);
-    ch.position.set(x, 0.01, z);
-    ch.rotation.y = rot;
-    g.add(ch);
+  g.name = 'study';
+  // the inlay: honed dark stone set flush into the tile, an aluminium hairline round it
+  STUDY_STONE_TEX.repeat.set((I.x1 - I.x0) / 2.2, (I.z1 - I.z0) / 2.2);
+  const slab = new THREE.Mesh(new THREE.PlaneGeometry(I.x1 - I.x0, I.z1 - I.z0), STUDY_STONE);
+  slab.rotation.x = -HALF_PI;
+  slab.position.set((I.x0 + I.x1) / 2, 0.0035, (I.z0 + I.z1) / 2);
+  slab.receiveShadow = true;
+  slab.userData.noCollide = true;
+  g.add(slab);
+  const hair = 0.012;
+  for (const [x, z, w, d] of [[(I.x0 + I.x1) / 2, I.z0, I.x1 - I.x0 + hair, hair], [(I.x0 + I.x1) / 2, I.z1, I.x1 - I.x0 + hair, hair], [I.x0, (I.z0 + I.z1) / 2, hair, I.z1 - I.z0], [I.x1, (I.z0 + I.z1) / 2, hair, I.z1 - I.z0]]) {
+    const h = box(w, 0.004, d, MAT.alu, x, 0.004, z);
+    h.userData.noCollide = true;
+    h.userData.noShadow = true;
+    g.add(h);
   }
-  const t = sphereTable();
-  t.position.set(R.x + 0.05, 0.01, R.z + 0.62);
-  g.add(t);
-  const vase = PLANTS.roses();
-  vase.scale.setScalar(1.45);
-  vase.position.set(R.x + 0.08, 0.01 + t.userData.top, R.z + 0.62);
-  g.add(vase);
+  // the console against the east glass: white oak, a single long drawer, on a recessed graphite plinth
+  const C = S.console;
+  const con = new THREE.Group();
+  con.add(placed(new THREE.Mesh(roundedBoxGeometry(C.w, 0.55, C.d, 0.008, 3), MAT.oak), 0, 0.09 + 0.275, 0));
+  con.add(placed(new THREE.Mesh(roundedBoxGeometry(C.w - 0.14, 0.07, C.d - 0.1, 0.004, 2), MAT.graphite), 0, 0.045, 0));
+  con.add(placed(new THREE.Mesh(roundedBoxGeometry(C.w - 0.06, 0.012, C.d - 0.06, 0.002, 1), MAT.oakB), 0, 0.09 + 0.55 + 0.006, 0)); // the top, a shade darker: a second board
+  const groove = box(0.004, 0.16, C.d - 0.08, RM.gap, -C.w / 2 + 0.005, 0.49, 0); // the drawer's finger pull, a dark slot down the room-facing face
+  con.add(groove);
+  con.position.set(C.x, 0, C.z);
+  addProxy(con, C.w, 0.65, C.d, 0, 0.33, 0);
+  con.add(placed(contactShadow(C.w + 0.3, C.d + 0.3, 0.3), 0, 0.004, 0));
+  g.add(shadowAll(con));
+  const tray = mailTray();
+  tray.rotation.y = -HALF_PI; // open side toward the desks
+  tray.position.set(C.x - 0.04, 0.09 + 0.55 + 0.012, C.z + 0.34);
+  g.add(tray);
+  ROOM_OBJ.mailTray = tray;
+  const pot = PLANTS.bloom(27, 0.62, 'bowl');
+  pot.position.set(C.x, 0.09 + 0.55 + 0.012, C.z - 0.42);
+  g.add(pot);
+  buildStudyGlass(g);
+  buildStudyBoard(g);
   room.add(g);
-  ROOM_OBJ.readingSeats = seats.map(([x, z, face]) => ({ x: x + Math.sin(face) * 0.03, z: z + Math.cos(face) * 0.03, face, lift: READ_SEAT - DIM.seatTop - 0.02, taken: false, area: 'reading' }));
+}
+
+/** The study's dashboard: open and closed personal tasks and what needs Igor, drawn from the same state as the cards.
+ *  A free-standing media wall (screen in a dark bezel on a graphite plinth) so the south glass stays glass. */
+function buildStudyBoard(g) {
+  const B = ROOM.study.board;
+  const grp = new THREE.Group();
+  // a thin frame around a transparent LED glass: nothing solid behind it, so the floor cameras see the assistants through it
+  const f = 0.035, d = 0.04;
+  for (const [w, h, x, y] of [[B.w + 2 * f, f, 0, B.h / 2 + f / 2], [B.w + 2 * f, f, 0, -B.h / 2 - f / 2], [f, B.h, -B.w / 2 - f / 2, 0], [f, B.h, B.w / 2 + f / 2, 0]]) {
+    const bar = box(w, h, d, MAT.aluDark, x, y, 0);
+    bar.userData.pick = 'screen:study';
+    grp.add(bar);
+  }
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(B.w, B.h), MAT.screenOff);
+  face.userData.pick = 'screen:study';
+  face.userData.frontOnly = true;   // always framed from the room side, never from outside the glass
+  face.userData.focusYaw = 0.2;     // off-axis so the middle glass post stays out of the sight line
+  grp.add(face);
+  // two slim blades on pads, outside the chairs' roll-back arc
+  const bx = B.w * 0.45;
+  for (const sx of [-1, 1]) {
+    grp.add(box(0.045, B.y0 + f, 0.045, MAT.aluDark, sx * bx, -(B.h / 2) - B.y0 / 2 - f / 2, 0));
+    grp.add(box(0.3, 0.025, 0.2, MAT.graphite, sx * bx, -(B.h / 2) - B.y0 + 0.0125, 0));
+    addProxy(grp, 0.3, 0.3, 0.2, sx * bx, -(B.h / 2) - B.y0 + 0.15, 0);
+  }
+  grp.position.set(B.x, B.y0 + B.h / 2, B.z);
+  grp.rotation.y = Math.PI; // faces the room (the desks look north; the board stands behind them)
+  grp.userData.keep = true;
+  g.add(grp);
+  ROOM_OBJ.panels.push({ key: 'study', title: 'The study', group: grp, face, bezel: null, w: B.w, h: B.h });
+  ROOM_OBJ.pickables.push(grp);
+}
+
+/** The study's glass: a screen, not a room. Clear panes in slim aluminium, a floor channel, posts at the pane joints; stopping
+ *  short of the ceiling so the light and the view stay shared. The aisle-side run leaves a way in at each end, and the west
+ *  return closes the side toward the sculpture. Panes collide (walkers steer round them); they cast no shadow. */
+const STUDY_GLASS = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.03, metalness: 0, transparent: true, opacity: 0.07, ior: 1.25, envMapIntensity: 0.45, side: THREE.DoubleSide, depthWrite: false, fog: false }); // low-iron glass: seen edge-on from the desks it must not read as a white wall
+function buildStudyGlass(g) {
+  const S = ROOM.study, I = S.inlay, G = S.glass, H = G.h;
+  const pane = (len, x, z, alongX) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(len, H - 0.05), STUDY_GLASS);
+    m.userData.noShadow = true;
+    m.userData.collide = true;
+    if (!alongX) m.rotation.y = HALF_PI;
+    m.position.set(x, 0.03 + (H - 0.05) / 2, z);
+    g.add(m);
+  };
+  const post = (x, z) => g.add(box(0.035, H, 0.035, MAT.alu, x, H / 2, z));
+  const channel = (len, x, z, alongX) => { const c = box(alongX ? len : 0.06, 0.03, alongX ? 0.06 : len, MAT.alu, x, 0.015, z); c.userData.noShadow = true; g.add(c); };
+  const cap = (len, x, z, alongX) => g.add(box(alongX ? len : 0.05, 0.035, alongX ? 0.05 : len, MAT.alu, x, H - 0.0175, z));
+  // the aisle side: two panes between the two ways in
+  const z0 = I.z0 + 0.03, run = G.run.x1 - G.run.x0;
+  pane(run, (G.run.x0 + G.run.x1) / 2, z0, true);
+  channel(run, (G.run.x0 + G.run.x1) / 2, z0, true);
+  cap(run, (G.run.x0 + G.run.x1) / 2, z0, true);
+  for (let i = 0; i <= 2; i++) post(G.run.x0 + (i / 2) * run, z0); // two panes: the middle post lands in the gap between the two desks, never across a monitor
+  // the west return, from the aisle side to the south glass
+  const xw = I.x0 + 0.03, zs = ROOM.D / 2 - 0.12, retLen = zs - z0;
+  pane(retLen, xw, (z0 + zs) / 2, false);
+  channel(retLen, xw, (z0 + zs) / 2, false);
+  cap(retLen, xw, (z0 + zs) / 2, false);
+  for (let i = 0; i <= 2; i++) post(xw, z0 + (i / 2) * retLen);
 }
 
 /* ---------- the entrance: aluminium and glass, the wordmark etched ----------------- */
@@ -1512,8 +1595,8 @@ function etchedHalf(which, leafW) {
   const base = E.H * 0.68;
   const stilePx = (E.stile / leafW) * E.W;
   const parts = which === 'left'
-    ? [['BEYDER', `500 ${E.font}px ${BRAND.ui}`, 'rgba(255,255,255,0.94)']]
-    : [['&', `italic 500 ${E.font}px ${BRAND.ui}`, BRAND.crimson], ['CO.', `500 ${E.font}px ${BRAND.ui}`, 'rgba(255,255,255,0.94)']];
+    ? [['BEYDER', `500 ${E.font}px ${BRAND.ui}`, 'rgba(10,10,10,0.9)']]
+    : [['&', `italic 500 ${E.font}px ${BRAND.ui}`, BRAND.crimson], ['CO.', `500 ${E.font}px ${BRAND.ui}`, 'rgba(10,10,10,0.9)']]; // ink: the glass stands in front of white plaster and aluminium
   // lay out glyph by glyph with even tracking, measuring ink so the seam gap is exact
   const glyphs = [];
   for (const [text, font, col] of parts) {
@@ -1536,7 +1619,7 @@ function etchedHalf(which, leafW) {
   // half the tracking each side of the seam: the slim stiles sit inside the gap, never on a letter
   const half = Math.max(E.track / 2, stilePx + 3);
   const shift = which === 'left' ? E.W - half - inkR : half - inkL;
-  ctx.shadowColor = 'rgba(0,0,0,0.28)';
+  ctx.shadowColor = 'rgba(255,255,255,0.35)';
   ctx.shadowBlur = 3;
   for (const g of placed) {
     ctx.font = g.font;
@@ -1643,10 +1726,16 @@ function buildVestibule(room) {
   panel.position.set(cx0 - 0.28, 1.15, liftZc + CW / 2 - 0.008);
   panel.rotation.y = HALF_PI; // on the cab's side wall, facing in
   cab.add(panel);
-  // the shaft's outside: plaster to the roofline, a brushed cap
-  cab.add(box(CD + 0.04, ROOM.H - OH - 0.02, CW + 0.08, MAT.plaster, cx0 - CD / 2, OH + 0.02 + (ROOM.H - OH - 0.02) / 2, liftZc));
-  for (const sz of [-1, 1]) cab.add(box(CD + 0.04, OH + 0.02, 0.04, MAT.plaster, cx0 - CD / 2, (OH + 0.02) / 2, liftZc + sz * (CW / 2 + 0.04)));
-  cab.add(box(0.04, OH + 0.02, CW + 0.08, MAT.plaster, cx0 - CD - 0.04, (OH + 0.02) / 2, liftZc));
+  // the shaft's outside: the core, clad in graphite panels with open joints every 600 mm, a brushed cap. From the Door view
+  // this block is the first thing seen; plaster read as an unfinished white box.
+  cab.add(box(CD + 0.04, ROOM.H - OH - 0.02, CW + 0.08, MAT.graphite, cx0 - CD / 2, OH + 0.02 + (ROOM.H - OH - 0.02) / 2, liftZc));
+  for (const sz of [-1, 1]) cab.add(box(CD + 0.04, OH + 0.02, 0.04, MAT.graphite, cx0 - CD / 2, (OH + 0.02) / 2, liftZc + sz * (CW / 2 + 0.04)));
+  cab.add(box(0.04, OH + 0.02, CW + 0.08, MAT.graphite, cx0 - CD - 0.04, (OH + 0.02) / 2, liftZc));
+  for (let y = 0.6; y < ROOM.H - 0.1; y += 0.6) {
+    cab.add(box(0.006, 0.012, CW + 0.1, RM.gap, cx0 - CD - 0.063, y, liftZc)); // west face
+    for (const sz of [-1, 1]) cab.add(box(CD + 0.06, 0.012, 0.006, RM.gap, cx0 - CD / 2, y, liftZc + sz * (CW / 2 + 0.063))); // the sides
+  }
+  cab.add(box(CD + 0.08, 0.12, CW + 0.12, FMAT.satinBlack, cx0 - CD / 2, 0.06, liftZc)); // a dark base, as the plinths downstairs
   cab.add(box(CD + 0.08, 0.05, CW + 0.12, MAT.aluDark, cx0 - CD / 2, ROOM.H + 0.025, liftZc));
   cab.traverse(o => o.isMesh && (o.userData.noCollide = true));
   g.add(cab);
@@ -1702,6 +1791,7 @@ function buildVestibule(room) {
   const indicator = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.11), new THREE.MeshBasicMaterial({ map: canvasTexture(ind), toneMapped: false }));
   indicator.rotation.y = HALF_PI;
   indicator.position.set(v.x0 + 0.075, 2.55, liftZ);
+  g.add(box(0.012, 0.15, 0.34, MAT.aluDark, v.x0 + 0.068, 2.55, liftZ)); // a slim bezel, so the plate belongs to the door assembly
   g.add(indicator);
   g.add(box(0.02, 0.025, d - 0.1, new THREE.MeshBasicMaterial({ color: lin('#ffffff'), toneMapped: false }), v.x0 + 0.01, ROOM.H - 0.06, cz));
   // oak bench with an oatmeal cushion
@@ -1802,6 +1892,16 @@ function updateRoom(dt, t) {
     SC.topMat.opacity = 0.04 + 0.42 * kk;
     SC.poolMat.opacity = 0.02 + 0.3 * kk;
     SC.revealMat.color.copy(SC.base).multiplyScalar(0.35 + 1.9 * kk);
+  }
+
+  // the study's mail tray: one sheet per queued personal task, nothing when the queue is empty (never a prop stack)
+  const tray = ROOM_OBJ.mailTray;
+  if (tray && typeof OFFICE_STATE !== 'undefined') {
+    let n = 0;
+    for (const tk of OFFICE_STATE.tasks) { const ag = OFFICE_STATE.agents[tk.agentId]; if (tk.column === 'queued' && ag && ag.zone === 'personal') n++; }
+    const st = tray.userData.stack, h = Math.min(n, 14) * 0.0045;
+    st.visible = h > 0;
+    st.scale.y = Math.max(h, 0.0001);
   }
 
   // the lounge model turns, and brightens when someone is reviewing it

@@ -2,9 +2,8 @@
    86 · AMBIENT LIFE — idle agents leave their desks, driven by status alone
    -----------------------------------------------------------------------------
    Presentation only. Nobody sits idle at a desk: an agent that goes IDLE (or is
-   paused) gets up after a moment and takes a seat in one of the two sitting
-   areas — the lounge, round the house model, or the reading corner — and only
-   when both are full, the Forum or the Market Room. A seat is reserved the
+   paused) gets up after a moment and takes a seat in the lounge, round the
+   house model — and only when it is full, the Forum or the Market Room. A seat is reserved the
    moment someone sets off for it, so no two agents ever take the same one, and
    the seat chosen is the one that faces whoever is already there (and needs the
    fewest knees stepped past). Seated together, they look at each other now and
@@ -20,8 +19,8 @@ const ambOf = id => (AMB.agents[id] = AMB.agents[id] || { phase: 'desk', idleSin
 /** Walkers plus anyone about to set off (a walk starts a beat after standing up). */
 const movingCount = () => OFFICE_STATE.order.filter(id => MOVE.walkers[id] || (AMB.agents[id] && AMB.agents[id].starting)).length + (MOVE.walkers.courier ? 1 : 0);
 const isBusy = a => a.status === 'WORKING' || a.status === 'THINKING' || a.status === 'WAITING';
-/** The two sitting areas first, in random order; then the overflow seats. */
-const SIT_ORDER = () => (Math.random() < 0.55 ? ['lounge', 'reading'] : ['reading', 'lounge']).concat(['screen', 'board']);
+/** The lounge first; then the two overflow seats in random order. */
+const SIT_ORDER = () => ['lounge'].concat(Math.random() < 0.5 ? ['screen', 'board'] : ['board', 'screen']);
 
 function ambTick() {
   const now = SIM.clock();
@@ -29,6 +28,7 @@ function ambTick() {
   AMB.lastTick = now;
   for (const id of OFFICE_STATE.order) {
     const a = OFFICE_STATE.agents[id];
+    if (a.zone === 'personal') continue; // the study's pair keep their desks; the lounge and the Forum are the crew's
     const m = ambOf(id);
     if (a.location === 'desk') {
       if (isBusy(a) || a.status === 'DONE') {
@@ -282,7 +282,6 @@ const FOCAL = {
   lounge: () => (ROOM_OBJ.holoHouse ? ROOM_OBJ.holoHouse.group.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.45, 0)) : null),
   screen: () => new THREE.Vector3(ROOM.screen.x, ROOM.screen.y, ROOM.screen.z),
   board: () => new THREE.Vector3(ROOM.hot.x, ROOM.hot.y, ROOM.hot.z),
-  reading: () => null,
 };
 function converse(now) {
   for (const id of OFFICE_STATE.order) {
