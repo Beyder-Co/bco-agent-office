@@ -2633,10 +2633,18 @@ class OfficeCommands:
                 if self.runner:
                     queue_id = self.runner(prompt)
                 else:
-                    proc = subprocess.run([str(CODEX_QUEUE),'queue','--thread',COORDINATOR_ID,'--message',prompt],
-                                          capture_output=True,text=True,timeout=20,shell=False)
-                    match = re.fullmatch(r'Queued message ([a-f0-9-]{36}) for thread '+re.escape(COORDINATOR_ID)+r'\.\s*',proc.stdout)
-                    if proc.returncode or not match: raise ValueError('Queue acknowledgement unavailable')
+                    # --resume starts Crimson's turn on the local daemon; queueing alone left
+                    # requests undelivered for days while the chat sat idle (Nov 5-8, 2026).
+                    # A failed resume is only a warning; the queue acknowledgement stays the receipt.
+                    try:
+                        proc = subprocess.run([str(CODEX_QUEUE),'queue','--thread',COORDINATOR_ID,'--message',prompt,'--resume'],
+                                              capture_output=True,text=True,timeout=60,shell=False)
+                        out, code = proc.stdout, proc.returncode
+                    except subprocess.TimeoutExpired as exc:
+                        out = exc.stdout.decode() if isinstance(exc.stdout,bytes) else (exc.stdout or '')
+                        code = 0
+                    match = re.search(r'^Queued message ([a-f0-9-]{36}) for thread '+re.escape(COORDINATOR_ID)+r'\.\s*$',out,re.M)
+                    if code or not match: raise ValueError('Queue acknowledgement unavailable')
                     queue_id = match[1]
                 if not re.fullmatch(r'[a-f0-9-]{36}',str(queue_id)): raise ValueError('Queue acknowledgement invalid')
                 row.update(state='queued',queueId=queue_id,note='Queued for Crimson. Awaiting his response; no completion is claimed.')

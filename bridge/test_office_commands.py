@@ -42,6 +42,29 @@ class Coordinator(unittest.TestCase):
         self.assertEqual(self.submit()['id'],row['id']);self.assertEqual(len(self.sent),1)
         self.c=B.OfficeCommands(self.h,self.path,self.runner,lambda:self.t)
         self.assertEqual(self.submit()['id'],row['id']);self.assertEqual(len(self.sent),1)
+    def test_real_queue_call_resumes_crimson_and_tolerates_resume_warning(self):
+        import subprocess
+        qid=str(uuid.uuid4());calls=[]
+        def fake(args,**kw):
+            calls.append(args)
+            return subprocess.CompletedProcess(args,0,'Queued message '+qid+' for thread '+B.COORDINATOR_ID+'.\nwarning: resume unavailable\n','')
+        self.c=B.OfficeCommands(self.h,self.path,None,lambda:self.t);self.c.enabled=lambda:True
+        with patch.object(B.subprocess,'run',side_effect=fake):row=self.submit()
+        self.assertEqual(row['state'],'queued');self.assertEqual(row['queueId'],qid)
+        self.assertEqual(calls[0][-1],'--resume');self.assertIn('--thread',calls[0])
+    def test_real_queue_timeout_keeps_printed_acknowledgement_and_never_retries(self):
+        import subprocess
+        qid=str(uuid.uuid4());calls=[]
+        def slow(args,**kw):
+            calls.append(args)
+            raise subprocess.TimeoutExpired(args,60,output='Queued message '+qid+' for thread '+B.COORDINATOR_ID+'.\n')
+        self.c=B.OfficeCommands(self.h,self.path,None,lambda:self.t);self.c.enabled=lambda:True
+        with patch.object(B.subprocess,'run',side_effect=slow):row=self.submit()
+        self.assertEqual((row['state'],row['queueId'],len(calls)),('queued',qid,1))
+        def silent(args,**kw):raise subprocess.TimeoutExpired(args,60,output=None)
+        self.c=B.OfficeCommands(self.h,self.root/'other.jsonl',None,lambda:self.t);self.c.enabled=lambda:True
+        with patch.object(B.subprocess,'run',side_effect=silent):row=self.submit()
+        self.assertEqual(row['state'],'uncertain')
     def test_uncertain_or_interrupted_handoff_never_replays(self):
         def failed(prompt):self.sent.append(prompt);raise TimeoutError()
         self.c.runner=failed;row=self.submit();self.assertEqual(row['state'],'uncertain');self.assertEqual(self.submit()['id'],row['id']);self.assertEqual(len(self.sent),1)
