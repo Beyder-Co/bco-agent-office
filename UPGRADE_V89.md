@@ -53,7 +53,7 @@ The two extra stations and robots account for the added draw calls (~50 each); t
 
 **Audit 1 — code paths** (real-time connectivity, bounded self-repair, honesty of states): see the findings table below.
 
-**Audit 2 — the live Studio** (bridge at 127.0.0.1:4317, launchd job states, repair ledger): to be run over Remote Control, read-only. Not run at close-out (below).
+**Audit 2 — the live Studio** (bridge at 127.0.0.1:4317, launchd job states, repair ledger): run over Remote Control, read-only, on 2026-11-08 (below).
 
 ### Sweep A — design (5 weakest points, all fixed)
 1. The study camera was a steep overhead survey (void above, floor below, ticker cropped) → reframed from the front aisle at working height; fit box raised to the glass caps.
@@ -84,8 +84,16 @@ Verified good: the page is pushed over a WebSocket (no polling); feed states are
 - Every tick rebroadcast bridge meta twice → a quiet refresh when nothing but the timestamp changed.
 - A flapping job could draw an unbounded stream of automatic repairs over a day → two per label per day, then *repair paused* is shown on the card (no repair loops, as Igor asked).
 
-### Audit 2 — the live Studio
-**Not run.** The read-only Remote Control request (to read the running bridge's `/health` and diagnostics, launchd job states and the repair ledger, changing nothing) was not approved before close-out. The TEST build and every code path were audited; the live Studio state is not claimed anywhere in this document. It can be run at any time by approving the card; it needs no code change and nothing in this branch depends on it.
+### Audit 2 — the live Studio (run 2026-11-08 ≈ 08:35 UTC, read-only; nothing changed, restarted or repaired)
+**Live install:** bridge 1.6.0, page 8.8.1 (this branch is 8.9.0 and is not installed yet), up 2.6 days, `/` answers in 3 ms. Four feeds live (FUB 40 s old, RealScout, rates 12/12, hot sheet 16 rows); the hot sheet's `asOf` is 20 h old with no age limit, which the code-path audit did not flag. Readiness *degraded* for one reason: the fleet reports 3 failing jobs (Vercel fleet audit, skiptrace-scan, propertyviewed.tagger). Feed transitions all recovered; none in the last 31 h. FUB budget healthy: 596 calls/h, zero 429s, 742/750 left.
+
+**launchd:** 21 jobs, every last exit 0; the Office bridge is KeepAlive and running. Eleven daily jobs show 0 runs since a reload around 23:50 ET on Nov 7 and have simply not reached their slot; their receipts show Nov 7 runs.
+
+**Self-repair, as it really behaves:** 7 automatic handoffs in the ledger. 4 resolved by the source, 1 is *needs Igor* since Nov 4 (Vercel fleet audit: PRs beyderco-automation#229 and bco-monitoring-loop#21 await his pause/approval), and **2 have sat *queued* for ~52 h and ~7 h without ever being picked up by Crimson** (skiptrace-scan; property-viewed follow-up). The site-publishing audit raised and self-resolved three handoffs in three days (flappy). skiptrace-scan and njmls-matrix-intake fail with the same `ValueError` scrape error — one NJMLS collection problem, no writes made.
+
+**What this branch does and does not fix:** the per-job daily repair cap (two, then *repair paused* on the card) covers the flappy publishing audit once installed. The stuck *queued* handoffs are a pickup problem between the bridge's command queue and Crimson's chat, outside this repo; the Office can only show it. Recommended follow-up (separate thread): surface *queued for > N h* as an attention state on the card, and age the hot sheet.
+
+**Audit 1 vs Audit 2:** no contradiction. Everything Audit 1 verified as good (push over WebSocket, honest downgrades, bounded repair, no study path to Crimson) holds in the live logs; the two things Audit 1 could not see — the stalled pickup and the unaged hot sheet — are recorded above.
 
 ## 7. Limitations, stated plainly
 
