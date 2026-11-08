@@ -44,6 +44,7 @@
     OFFICE_STATE.order.forEach(id=>{const a=OFFICE_STATE.agents[id];if(a)entries.push({id:'agent:'+id,label:a.name,detail:a.specialty,group:'Agents',run:()=>{close();UI.select(id);}});});
     if(window.OfficeExperience)entries.push({id:'experience',label:'Controls and source health',group:'Office',run:()=>{close();window.OfficeExperience.open();}});
     entries.push({id:'board',label:'Task board',group:'Office',run:()=>{close();UI.toggleBoard(true);}});
+    entries.push({id:'keys',label:'Keyboard shortcuts',detail:'Every key the office answers (?)',group:'Office',run:()=>{close();UI.shortcuts();}});
     return entries.filter(c=>includes([c.label,c.detail,c.group],W.query));
   }
 

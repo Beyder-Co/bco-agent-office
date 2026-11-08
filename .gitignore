@@ -7,6 +7,7 @@
 !/vercel.json
 !/src/
 !/bridge/
+!/tests/
 **/__pycache__/
 **/*.pyc
 **/.env

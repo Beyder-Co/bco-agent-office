@@ -616,5 +616,32 @@ body.board-open #panel { max-height:calc(100vh - var(--bar-h) - var(--board-h) -
 #ccNotice { margin:12px 0; font-size:13px; }
 .cc-history { margin-top:20px; border-top:1px solid #ddd; padding-top:14px; }
 .cc-history article { border-bottom:1px solid #ddd; padding:12px 0; font-size:13px; }
+.cc-history article.cc-stalled b { color:#a70008; }
 .p-compact-actions { flex-wrap:wrap; }
+/* 9.0 · the pointer label over working objects; the keyboard list */
+#pickTip { position:fixed; left:0; top:0; z-index:60; pointer-events:none; padding:5px 9px; border-radius:8px; background:rgba(10,10,10,.86); color:#fff; font:500 11.5px/1.2 var(--ui); white-space:nowrap; }
+#pickTip[hidden] { display:none; }
+#keysDialog { width:min(520px,calc(100vw - 24px)); border:1px solid #d8d6d3; border-radius:18px; padding:0 0 18px; font:14px var(--ui); color:#171717; }
+#keysDialog::backdrop { background:#17202b80; backdrop-filter:blur(8px); }
+#keysDialog header { display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid #ddd; }
+#keysDialog h2 { margin:0; font:500 24px var(--serif); }
+#keysDialog table { border-collapse:collapse; width:calc(100% - 44px); margin:10px 22px 0; }
+#keysDialog th, #keysDialog td { text-align:left; padding:7px 0; border-bottom:1px solid #eee; font-weight:400; }
+#keysDialog th { width:42%; white-space:nowrap; }
+#keysDialog kbd { display:inline-block; min-width:18px; padding:2px 6px; border:1px solid #cfcfcf; border-bottom-width:2px; border-radius:6px; font:600 12px var(--ui); text-align:center; background:#fafafa; }
+#keysDialog .g-meta { margin:12px 22px 0; }
+#keysDialog :focus-visible { outline:2px solid #a70008; outline-offset:3px; }
+/* 9.0 · a pill that cannot be cleared of its neighbours keeps only its dot */
+.bubble.crowd .nm, .bubble.crowd .st { display:none; }
+.bubble.crowd { padding-left:5px; padding-right:5px; }
+/* 9.0 · phones: the crew rail as a strip along the bottom, so the room keeps the screen's full width */
+@media (max-width:620px) {
+  #roster.collapsed { top:auto; bottom:calc(var(--fresh-h,26px) + 10px); left:10px; right:10px; width:auto; max-height:none; flex-direction:row; align-items:center; }
+  #roster.collapsed .rail-head { padding:0 2px 0 8px; flex:none; }
+  #roster.collapsed #rosterList { display:flex; flex-direction:row; align-items:center; gap:2px; overflow-x:auto; overflow-y:hidden; padding:6px 8px; scrollbar-width:none; }
+  #roster.collapsed #rosterList::-webkit-scrollbar { display:none; }
+  #roster.collapsed .row { padding:2px 3px; }
+  #roster.collapsed .rail-sep { padding:0 2px; align-self:stretch; border-left:1px solid #e3e3e3; margin-left:4px; }
+  #roster.collapsed #rosterToggle { transform:rotate(90deg); }
+}
 </style>

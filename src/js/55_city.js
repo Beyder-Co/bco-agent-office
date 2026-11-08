@@ -1871,6 +1871,28 @@ void main() {
     return { deckY, cableY };
   }
   /** Static street detail on both shores, in the building batch and on its own seed: parked vehicles, approach gantries, the parkway's river wall. */
+  /** Our own forecourt on the cliff top, 124 m under the office: a ring of honey locusts between the stone and the
+   *  lawn, lamp posts round the stone, cars at the kerb of the drive on the landward side, and the lit footpath
+   *  along the cliff edge (the Palisades walk) running north and south of us. */
+  function genForecourt(rnd) {
+    const gy = landY(0, 0);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * TAU + 0.09, r = 29 + (i % 2) * 1.2;
+      const [x, z] = toW(Math.cos(a) * r, Math.sin(a) * r);
+      const k = 0.55 + rnd() * 0.12; // street trees: smaller than the woods' crowns
+      TREES.push([x, z, gy + 3.2 + 4.6 * k, 7.5 * k, 8 * k, rnd(), gy]);
+    }
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * TAU, [x, z] = toW(Math.cos(a) * 23, Math.sin(a) * 23);
+      LAMPS.push([new THREE.Vector3(x, gy + 4.2, z), [1.0, 0.8, 0.55], 1.1, 3]);
+    }
+    for (let s = -420; s <= 520; s += 22) {
+      const c = cCliff(s) - 7;
+      if (Math.hypot(s, c) < 60) continue;
+      LAMPS.push([new THREE.Vector3(...((p) => [p[0], landY(s, c) + 3.2, p[1]])(toW(s, c))), [1.0, 0.78, 0.5], 0.9, 3]);
+    }
+  }
+
   function genStreetDetail() {
     const q = seeded(9127), yW = GEO.yW, sB = GEO.sB;
     const vehicle = (s, c, y, van, alongS) => {
@@ -1880,6 +1902,12 @@ void main() {
       bSC(s, c, alongS ? len : 2.2, alongS ? 2.2 : len, body + 0.25, 6, pickR(q, [4, 1, 7, 0]), FL.DARK, q() * 100, { gy: yb, y0: yb });
       bSC(s, c, alongS ? glass : 1.9, alongS ? 1.9 : glass, van ? 0.7 : 0.55, 6, 6, FL.DARK, 34, { gy: y, y0: y + body });
     };
+    // our forecourt's drive: cars along the landward kerb (the drive curves round the stone at about 40 m)
+    for (let i = 0; i < 9; i++) {
+      if (q() < 0.25) continue;
+      const a = Math.PI * (0.62 + i * 0.075), s = Math.cos(a) * 40, c = Math.sin(a) * 40 - 8;
+      vehicle(s, c, landY(s, c) + 0.05, q() < 0.15, Math.abs(Math.cos(a)) < 0.7);
+    }
     // the bridge approach: kerbside rows outside the lamp lines, sign gantries over the lanes
     for (const sg of [-1, 1]) {
       for (let u = -2150; u < -70; u += 13 + q() * 22) {
@@ -2201,6 +2229,144 @@ void main() {
   const litAt = h => table(LIT, ((h % 24) + 24) % 24);
 
   /* ---------- build ---------- */
+  /* ---------- the river's traffic ----------
+     What actually moves on this reach of the Hudson in November: tugs pushing barges (gravel, fuel), the year-round
+     excursion boats that round Manhattan and pass under the bridge, and the odd motor yacht heading south for the
+     winter (daylight only). No sailboats: the season is over. Each vessel runs a straight lane in the river frame;
+     its hull is boxes in the city's own material (so light and haze match), a wake is drawn on the water behind it,
+     and after dark its navigation lights are points in the city's light material. Positions are a pure function of
+     the sky's clock, so a reduced-motion office simply holds them still. */
+  const WAKE_VERT = `
+varying vec3 vWorld;
+varying vec2 vUv;
+${VERT}
+void main() {
+  vUv = uv;
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vWorld = w.xyz;
+  gl_Position = projectionMatrix * viewMatrix * vec4(compressP(w.xyz), 1.0);
+}`;
+  const WAKE_FRAG = `
+varying vec3 vWorld;
+varying vec2 vUv;
+uniform float uWake;
+${FRAG}
+void main() {
+  float along = vUv.x;               // 0 at the stern, 1 at the wake's end
+  float across = abs(vUv.y * 2.0 - 1.0);
+  float arms = smoothstep(0.07, 0.0, abs(across - min(along * 1.25, 1.0) * 0.92)) * (1.0 - along); // the Kelvin arms
+  float trail = smoothstep(0.28, 0.0, across - along * 0.12) * pow(1.0 - along, 1.6);            // the churned centre
+  float n = vnoise(vWorld.xz * 0.35 + vec2(uTime * 0.6, 0.0));
+  float a = max(arms * 0.55, trail * 0.85) * (0.55 + 0.45 * n) * smoothstep(0.0, 0.02, along) * uWake;
+  vec3 foam = vec3(0.92, 0.94, 0.95) * (uSkyCol * 1.6 + uSunCol * 0.55) + vec3(0.02);
+  gl_FragColor = vec4(foam, a * (1.0 - 0.75 * uNight));
+  ${OUT}
+  gl_FragColor.rgb = hazeOf(vWorld, gl_FragColor.rgb);
+}`;
+  const BOATS = { list: [], parts: 0, mesh: null, wakes: [], lights: null, lightPos: null };
+  // a pointed bow: a square box turned 45° on the hull's front end (the diamond's front half is the stem)
+  const bow = (x, beam, y0, h, pal) => [x, 0, y0, beam * 0.7071, beam * 0.7071, h, pal, Math.PI / 4];
+  function genBoats() {
+    // lane: s from → to (the direction of travel), c across, speed m/s, phase; parts: [dx(along), dz(across), y0, len, beam, h, pal]
+    const tug = (barge) => [
+      [0, 0, -1.2, 30, 9, 3.4, 3], [2, 0, 2.2, 12, 7, 3.2, 1], [3, 0, 5.4, 6, 6, 2.6, 1], [3, 0, 8.0, 2.4, 3.6, 0.3, 3], // hull, house, wheelhouse, its roof
+      [-4, 0, 2.2, 1.2, 1.2, 6.5, 13], // the stack
+      bow(-15, 9, -1.2, 3.4, 3), // tugs are round at both ends; a chamfered stern reads close enough
+      ...(barge ? [[47, 0, -1.4, 62, 17, 3.6, 10], [47, 0, 2.2, 46, 12, 2.2, 6]] : []), // the barge ahead of her, and its load
+    ];
+    const excursion = [[0, 0, -1.0, 50, 10, 3.6, 1], bow(25, 10, -1.0, 3.6, 1), [-2, 0, 2.6, 38, 9, 2.6, 1], [-2, 0, 2.9, 37.6, 9.1, 1.4, 3], [-4, 0, 5.2, 28, 8.4, 2.2, 1], [-4, 0, 5.5, 27.6, 8.5, 1.1, 3], [6, 0, 7.4, 6, 5, 2.0, 1]];
+    const yacht = [[0, 0, -0.8, 19, 5.4, 2.6, 1], bow(9.5, 5.4, -0.8, 2.6, 1), [-1.5, 0, 1.8, 9, 4.2, 1.8, 1], [-1.5, 0, 2.2, 8.8, 4.3, 0.8, 3], [-2.5, 0, 3.6, 4.5, 3.6, 0.15, 1]];
+    BOATS.list = [
+      { lane: [-5200, 6200, 610], v: 3.6, ph: 0.18, parts: tug(true), wake: [70, 26], day: false, lights: 'tug' }, // downstream, pushing south
+      { lane: [6200, -5200, 520], v: 3.2, ph: 0.71, parts: tug(true), wake: [70, 26], day: false, lights: 'tug' }, // back up the river
+      { lane: [-4800, 7000, 930], v: 5.8, ph: 0.42, parts: excursion, wake: [120, 34], day: false, lights: 'ship' },
+      { lane: [-5000, 7500, 1010], v: 7.5, ph: 0.05, parts: yacht, wake: [90, 22], day: true, lights: 'small' },
+    ];
+    BOATS.parts = BOATS.list.reduce((n, b) => n + b.parts.length, 0);
+  }
+  /** Each vessel's pose now: world x, z, heading, and whether it is shown. */
+  function boatPose(b, time) {
+    const [s0, s1, c] = b.lane, L = Math.abs(s1 - s0);
+    const t = ((b.ph + time * b.v / L) % 1 + 1) % 1;
+    const s = s0 + (s1 - s0) * t;
+    const [x, z] = toW(s, c);
+    const dir = Math.sign(s1 - s0);
+    return { x, z, yaw: Math.atan2(-SD[1] * dir, SD[0] * dir), dir, t };
+  }
+  function buildBoats(g, cityMat, mat) {
+    genBoats();
+    const geo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    geo.deleteAttribute('uv');
+    const mesh = new THREE.InstancedMesh(geo, cityMat, BOATS.parts);
+    const data = new Float32Array(BOATS.parts * 4);
+    let k = 0;
+    for (const b of BOATS.list) for (const p of b.parts) { data.set([17 + k * 3.7, p[6] + 16 * FL.DARK, 6, GEO.yW], k * 4); k++; }
+    geo.setAttribute('aData', new THREE.InstancedBufferAttribute(data, 4));
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    g.add(mesh);
+    BOATS.mesh = mesh;
+    const wakeMat = mat(WAKE_VERT, WAKE_FRAG, { uWake: { value: 1 } }, { transparent: true, depthWrite: false });
+    for (const b of BOATS.list) {
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-HALF_PI).translate(0.5, 0, 0), wakeMat);
+      w.frustumCulled = false;
+      w.renderOrder = 1;
+      g.add(w);
+      BOATS.wakes.push(w);
+    }
+    // navigation lights: masthead (white), sidelights (red to port, green to starboard), a cabin glow on the excursion boat
+    const L = [];
+    for (const [i, b] of BOATS.list.entries()) {
+      const top = b.lights === 'small' ? 5 : 11;
+      L.push([i, b.lights === 'tug' ? 3 : 8, 0, top, [1, 0.97, 0.9], 2.2]);
+      L.push([i, 6, -1, 4.5, [1, 0.12, 0.08], 1.8], [i, 6, 1, 4.5, [0.25, 1, 0.45], 1.8]);
+      if (b.lights === 'tug') L.push([i, 3, 0, top - 2.4, [1, 0.97, 0.9], 2.2], [i, 72, 0, 3, [1, 0.75, 0.3], 1.6]); // towing pair, the barge's bow light
+      if (b.lights === 'ship') for (let j = -3; j <= 3; j++) L.push([i, j * 5, 0, 4, [1, 0.82, 0.58], 2.6]);
+    }
+    const n = L.length, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), info = new Float32Array(n * 4);
+    L.forEach((l, j) => { col.set(l[4], j * 3); info.set([l[5], 3, 0, 0], j * 4); });
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    lg.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+    lg.setAttribute('aInfo', new THREE.BufferAttribute(info, 4));
+    lg.setAttribute('aMove', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const pts = new THREE.Points(lg, mat(LIGHT_VERT, LIGHT_FRAG, {}, { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    pts.frustumCulled = false;
+    g.add(pts);
+    BOATS.lights = { pts, L };
+    updateBoats(0, 0);
+  }
+  const _bm = new Float32Array(16);
+  function updateBoats(time, night) {
+    if (!BOATS.mesh) return;
+    const arr = BOATS.mesh.instanceMatrix.array;
+    let k = 0;
+    const poses = BOATS.list.map((b, i) => {
+      const P = boatPose(b, time), show = !(b.day && night > 0.5);
+      const c = Math.cos(P.yaw), sn = Math.sin(P.yaw);
+      for (const p of b.parts) {
+        const lx = p[0], lz = p[1];
+        const x = P.x + lx * c + lz * sn, z = P.z - lx * sn + lz * c;
+        setTRS(arr, k * 16, x, GEO.yW + p[2], z, P.yaw + (p[7] || 0), show ? p[3] : 0, show ? p[5] : 0, show ? p[4] : 0);
+        k++;
+      }
+      const w = BOATS.wakes[i], tail = b.parts[0][3] / 2 - 2; // the wake starts at the stern
+      w.visible = show;
+      w.position.set(P.x - tail * c, GEO.yW + 0.08, P.z + tail * sn);
+      w.rotation.y = P.yaw + Math.PI;
+      w.scale.set(b.wake[0], 1, b.wake[1]);
+      return { P, show, c, sn };
+    });
+    BOATS.mesh.instanceMatrix.needsUpdate = true;
+    const { pts, L } = BOATS.lights, pos = pts.geometry.attributes.position.array;
+    L.forEach((l, j) => {
+      const q = poses[l[0]];
+      const x = q.P.x + l[1] * q.c + l[2] * q.sn * 3, z = q.P.z - l[1] * q.sn + l[2] * q.c * 3;
+      pos[j * 3] = x; pos[j * 3 + 1] = q.show ? GEO.yW + l[3] : -1e4; pos[j * 3 + 2] = z;
+    });
+    pts.geometry.attributes.position.needsUpdate = true;
+  }
+
   function build() {
     const t0 = performance.now();
     BL = [];
@@ -2247,7 +2413,8 @@ void main() {
     // our own tower under the floor, and its lobby on the cliff
     // (flag DARK: seen from a few metres its lit rooms read as flat white panels, so after dark only the office glows)
     // (flag 16 marks it as ours: its glass runs right up to the office, with no parapet or plant screen at the top)
-    BL.push([-1.35, -0.2, 19.5, 12.8, -0.56 - GEO.G, GEO.G, 0, 0, 3 + 16 * (8 | 16), 42.4, GEO.G]);
+    // (9.0: the crown widened to the terrace's footprint, TERRACE in 53_terrace.js: a planted roof round the floor)
+    BL.push([(TERRACE.x0 + TERRACE.x1) / 2, (TERRACE.z0 + TERRACE.z1) / 2, TERRACE.x1 - TERRACE.x0, TERRACE.z1 - TERRACE.z0, -0.56 - GEO.G, GEO.G, 0, 0, 3 + 16 * (8 | 16), 42.4, GEO.G]);
     const counts = {};
     const tally = (k, f) => {
       const n0 = BL.length;
@@ -2260,6 +2427,7 @@ void main() {
     tally('nj', () => genNJ(rnd));
     const houses = tally('njFlats', () => genHouses(rnd));
     genWoods(rnd);
+    genForecourt(rnd);
     const M = new Mesher([['aData', 4], ['aExtra', 4]]);
     genLandmarks(M, rnd);
     const steel = new Mesher([['aKind', 1], ['aUV', 2]]);
@@ -2348,6 +2516,7 @@ void main() {
     const lights = new THREE.Points(lg, mat(LIGHT_VERT, LIGHT_FRAG, {}, { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
     lights.frustumCulled = false;
     g.add(lights);
+    buildBoats(g, cityMat, mat);
 
     SKY.cityMat = cityMat;
     SKY.groundMat = ground.material;
@@ -2356,7 +2525,7 @@ void main() {
     return g;
   }
 
-  return { GEO, toW, toSC, llToSC, landY, cMan, cJer, cCliff, isWater, season, litAt, build };
+  return { GEO, toW, toSC, llToSC, landY, cMan, cJer, cCliff, isWater, season, litAt, build, updateBoats, BOATS };
 })();
 
 /* ---------- build ---------- */
@@ -2422,6 +2591,7 @@ function updateSky(dt, force = false) {
   const U = SKY.common;
   U.uTime.value += dt;
   SKY.mesh.position.copy(camera.position);
+  CITY.updateBoats(U.uTime.value, U.uNight.value);
   U.uPx.value = renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
   const now = performance.now();
   if (!force && now < SKY.next) return;
