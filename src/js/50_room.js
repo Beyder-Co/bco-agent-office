@@ -2,9 +2,11 @@
    50 · THE ROOM — a penthouse floor in cutaway, in the language of a flagship store
    -----------------------------------------------------------------------------
    Plan (+X east, +Z toward the owner's view):
-     north wall  continuous glass: corner server + HOT LIST | Forum + MAIN SCREEN | Market Room + HOT SHEET
+     north wall  continuous glass: corner server + HOT LIST | Forum + MAIN SCREEN | B&Co. Design | Build | B&Co. Surfaces
      west wall   white-oak built-in (library, Surfaces samples) | glass | door | glass
-     NE          the Market Room behind frameless glass: table, holographic Bergen County, the hot sheet
+     Forum       the meeting table (holographic Bergen County) before the main screen; the hot sheet on the studios' glass
+     NE          two glass studios (54_studios): B&Co. Design | Build (plan table, drawings, rendering screen) and
+                 B&Co. Surfaces (the materials library)
      centre      two rows of white-oak workstations (ten slots, eight seated)
      SW          lounge round a turning holographic house · SE the study, behind glass (Igor's two personal assistants) · a tree bench up front
    Glass on all four sides (the south is the camera's side: four wide panes); the slab edge reads as a section.
@@ -17,7 +19,8 @@ const ROOM = {
   vestibule: { x0: -10.7, x1: -8, z0: -1.65, z1: 1.9 },
   feature: 3.2,
   screen: { x: 0, y: 1.55, z: -6.2 + 0.03, w: 4.4, h: 2.06 }, // the Forum screen: wide, the live feed beside the highlights
-  hot: { x: 5.68, y: 1.55, z: -6.2 + 0.03, w: 3.66, h: 2.06 }, // the pipeline, in the Market Room
+  /** The hot sheet (pipeline): on the Forum side of Design | Build's west glass, facing the Forum table (rotY: it faces west). */
+  hot: { x: 3.4 - 0.06, y: 1.5, z: -4.7, w: 2.8, h: 1.575, rotY: -HALF_PI },
   logo: { x: -3.93, y: 1.74, w: 1.12 },
   /** The hot list: two large screens stacked on the glass façade (new listings above; under contract and sold below). */
   hotlist: { x: -5.6575, z: -6.2 + 0.03, w: 2.985, h: 1.09, yUp: 2.035, yLo: 0.845 }, // same 94 cm reveal to the Forum jamb as the center display; left edge stays clear of the server
@@ -26,8 +29,11 @@ const ROOM = {
    *  (x, z) is where an agent stands to read it; (cx, cz) is the cabinet. */
   server: { x: -6.59, z: -5.56, cx: -7.60, cz: -5.56, ry: 0 },
   ticker: { y: 2.86, h: 0.4, ring: true }, // the markets band: a closed loop round the top of all four walls
-  board: { x0: 3.4, zEdge: -2.85, tx: 5.85, tz: -4.55 },
-  forum: { z: -4.35, xs: [-0.95, 0.95] },
+  /** The Forum's meeting table, square before the main screen: shared work and the idle visitors' seats. */
+  board: { tx: 0, tz: -4.6 },
+  /** The two studios behind frameless glass in the north-east corner: Design | Build from x0 to xm, Surfaces from xm to the
+   *  east glass, both ending at zEdge. Each has its way in at the west end of its south glass (doorDB, doorSF: x from, x to). */
+  studios: { x0: 3.4, xm: 5.6, zEdge: -2.85, doorDB: [3.4, 4.4], doorSF: [5.6, 6.7] }, // xm: on the façade's mullion
   lounge: { x: -5.6, z: 4.55 },
   /** The study: two standard workstations facing the room, on a dark stone inlay in the front-right corner, with a console against
    *  the east glass. seats[] are slots 10 and 11, reserved for Igor's personal assistants; business agents never take them. */
@@ -205,7 +211,8 @@ function buildRoom(imgs = {}) {
   ROOM_OBJ.pickables = [];
   buildLogoWall(room);
   buildForum(room);
-  buildMarketRoom(room);
+  buildForumTable(room);
+  if (typeof buildStudios === 'function') buildStudios(room);
   buildServer(room);
   buildTicker(room);
 
@@ -260,7 +267,7 @@ function buildRoom(imgs = {}) {
   return room;
 }
 
-/* ---------- north wall: the logo, the Forum, the Market Room ---------------------- */
+/* ---------- north wall: the logo, the Forum, the studios ---------------------- */
 
 function buildLogoWall(room) {
   const { z0, H } = ROOM;
@@ -308,8 +315,8 @@ function tickerLines() {
  *  back along the south — so it reads from anywhere in the room. One texture runs through every wall: each face's UVs
  *  are its place along the loop in metres, the faces meet exactly at the four inside corners, and the strip is laid
  *  out to a whole number of repeats of the loop (buildTickerStrip), so the words turn every corner, the closing one
- *  too, without a break. The bars overlap at each corner, closing the outside of the turn; the Market Room's glass
- *  stops short of the band (buildMarketRoom). The south bar also faces out, so the loop reads from outside the glass.
+ *  too, without a break. The bars overlap at each corner, closing the outside of the turn; the studios' glass
+ *  stops short of the band (buildStudios). The south bar also faces out, so the loop reads from outside the glass.
  *  Screens stop 8 cm below it. */
 function buildTicker(room) {
   const T = ROOM.ticker;
@@ -435,51 +442,14 @@ function buildForum(room) {
   ROOM_OBJ.screen = { group: g, face, bezel, w: s.w, h: s.h };
   ROOM_OBJ.pickables.push(g);
 
-  // the Forum: two white-oak benches facing the screen, a grey felt pad, splayed legs on a steel stretcher
-  ROOM_OBJ.forumSeats = [];
-  for (const x of ROOM.forum.xs) {
-    const b = new THREE.Group();
-    b.add(placed(new THREE.Mesh(roundedBoxGeometry(1.5, 0.032, 0.42, 0.01, 2), MAT.oak), 0, BENCH_H - 0.03 - 0.016, 0));
-    b.add(placed(new THREE.Mesh(softBlock(1.42, 0.03, 0.36, { r: 0.012, n: 5, segs: 40, crown: 0.004, edge: 3, rings: 3 }), RM.benchFelt), 0, BENCH_H - 0.03, 0));
-    for (const sx of [-1, 1])
-      for (const sz of [-1, 1]) {
-        const top = new THREE.Vector3(sx * 0.6, BENCH_H - 0.062, sz * 0.12), foot = new THREE.Vector3(sx * 0.66, 0.0, sz * 0.16);
-        b.add(rodBetween(foot, top, 0.016, MAT.oakB, false));
-      }
-    for (const sx of [-1, 1]) b.add(placed(new THREE.Mesh(roundedBoxGeometry(0.03, 0.024, 0.26, 0.006, 2), MAT.oakB), sx * 0.61, BENCH_H - 0.07, 0));
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 1.22, 14), FMAT.satinBlack);
-    bar.rotation.z = HALF_PI;
-    bar.position.set(0, 0.16, 0);
-    b.add(bar);
-    b.add(placed(contactShadow(1.9, 0.85, 0.3), 0, 0.004, 0));
-    b.position.set(x, 0, ROOM.forum.z - 0.08);
-    room.add(b);
-    for (const dx of [-0.36, 0.36]) ROOM_OBJ.forumSeats.push({ x: x + dx, z: ROOM.forum.z - 0.04, face: Math.PI, lift: BENCH_H - DIM.seatTop, taken: false, area: 'screen' });
-  }
+  // (the two benches went in 9.3: the meeting table stands here now, and its chairs are the Forum's seats — buildForumTable)
 }
 
-function buildMarketRoom(room) {
+/** The Forum table: shared work meets here, before the main screen (it moved from the Market Room in 9.3, when that room
+ *  became the two studios). The hot sheet hangs on the studios' glass at the Forum's east side, facing the table. */
+function buildForumTable(room) {
   const b = ROOM.board;
-  const { x1, z0, H } = ROOM;
   const g = new THREE.Group();
-  // Continue the same clear façade behind the pipeline; every display remains in place.
-  glassRun(g, 'x', ROOM.feature, x1, z0 - 0.02, 2);
-  // frameless glass: a west side and a south side, open at the south-west corner. Each pane stops short of the ticker
-  // where the band passes along the wall it meets, so the band runs on unbroken (buildTicker).
-  const zE = b.zEdge;
-  const TK = tickerLines(), yCut = ROOM.ticker.y - (ROOM.ticker.h + 0.035) / 2 - 0.006;
-  const west = new THREE.Mesh(notchedPaneGeometry(zE - z0, H, TK.zN + TK.F + 0.003 - z0, yCut), MAT.glass);
-  west.rotation.y = HALF_PI;
-  west.position.set(b.x0, H / 2, (z0 + zE) / 2);
-  g.add(west);
-  const openX1 = b.x0 + 1.1;
-  const south = new THREE.Mesh(notchedPaneGeometry(x1 - openX1, H, x1 - (TK.xE - TK.F - 0.003), yCut), MAT.glass);
-  south.position.set((openX1 + x1) / 2, H / 2, zE);
-  g.add(south);
-  g.add(box(0.035, H, 0.035, MAT.alu, b.x0, H / 2, zE));
-  g.add(box(0.035, H, 0.035, MAT.alu, openX1, H / 2, zE));
-  g.add(box(0.05, 0.03, zE - z0, MAT.alu, b.x0, 0.015, (z0 + zE) / 2));
-  g.add(box(x1 - openX1, 0.03, 0.05, MAT.alu, (openX1 + x1) / 2, 0.015, zE));
 
   // the pipeline screen
   const s = ROOM.hot;
@@ -490,7 +460,15 @@ function buildMarketRoom(room) {
   face.position.z = 0.006;
   face.userData.pick = bezel.userData.pick = 'screen:pipeline';
   sg.add(face);
+  // small metal standoffs hold it off the glass, as on the hot list
+  for (const x of [-s.w * 0.36, s.w * 0.36]) for (const y of [-s.h * 0.32, s.h * 0.32]) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.045, 12), MAT.alu);
+    m.rotation.x = HALF_PI;
+    m.position.set(x, y, -0.043);
+    sg.add(m);
+  }
   sg.position.set(s.x, s.y, s.z);
+  sg.rotation.y = s.rotY || 0;
   sg.userData.keep = true;
   room.add(sg);
   ROOM_OBJ.panels.push({ key: 'pipeline', title: 'Pipeline', group: sg, face, bezel, w: s.w, h: s.h });
@@ -541,20 +519,8 @@ function buildMarketRoom(room) {
     g.add(lid);
   }
   g.add(placed(contactShadow(3.6, 1.7, 0.3), b.tx, 0.014, b.tz));
-  // a linear pendant: an ink-black blade with a soft diffuser, hung on two fine cables from slim canopies
-  const pend = new THREE.Group();
-  const PL = 2.3, PY = 2.32;
-  pend.add(placed(new THREE.Mesh(roundedBoxGeometry(PL, 0.042, 0.05, 0.008, 2), FMAT.satinBlack), 0, PY, 0));
-  const diff = new THREE.Mesh(roundedBoxGeometry(PL - 0.04, 0.004, 0.032, 0.0015, 1), new THREE.MeshBasicMaterial({ color: lin('#fff6ea'), toneMapped: false }));
-  diff.position.y = PY - 0.0215;
-  pend.add(diff);
-  for (const sx of [-1, 1]) {
-    pend.add(placed(new THREE.Mesh(new THREE.CylinderGeometry(0.0012, 0.0012, ROOM.H - PY - 0.02, 6), FMAT.satinBlack), sx * (PL / 2 - 0.25), (PY + ROOM.H) / 2, 0));
-    pend.add(placed(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.012, 24), FMAT.satinBlack), sx * (PL / 2 - 0.25), ROOM.H - 0.006, 0));
-  }
-  pend.traverse(o => o.isMesh && (o.userData.noCollide = true));
-  pend.position.set(b.tx, 0, b.tz);
-  g.add(pend);
+  // (no pendant over this table: before the main screen, its blade would cross the screen from every view; the Forum's
+  // light is the north glass and the glow on the stone below)
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.9), new THREE.MeshBasicMaterial({ map: GLOW_TEX, color: lin('#fff3e0'), transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
   glow.rotation.x = -HALF_PI;
   glow.position.set(b.tx, DESK.top + 0.002, b.tz);
@@ -613,7 +579,24 @@ function buildMarketRoom(room) {
   });
   room.add(g);
   buildHoloMap(room);
+  ROOM_OBJ.forumSeats = ROOM_OBJ.boardSeats.filter(st => st.side); // the Forum's seats are the table's: one set, one reservation each
 }
+
+/** A linear pendant (length L, centred on its origin): an ink-black blade with a soft diffuser, on two fine cables from slim canopies. */
+function linearPendant(PL, PY = 2.32) {
+  const pend = new THREE.Group();
+  pend.add(placed(new THREE.Mesh(roundedBoxGeometry(PL, 0.042, 0.05, 0.008, 2), FMAT.satinBlack), 0, PY, 0));
+  const diff = new THREE.Mesh(roundedBoxGeometry(PL - 0.04, 0.004, 0.032, 0.0015, 1), PENDANT_DIFFUSER || (PENDANT_DIFFUSER = new THREE.MeshBasicMaterial({ color: lin('#fff6ea'), toneMapped: false })));
+  diff.position.y = PY - 0.0215;
+  pend.add(diff);
+  for (const sx of [-1, 1]) {
+    pend.add(placed(new THREE.Mesh(new THREE.CylinderGeometry(0.0012, 0.0012, ROOM.H - PY - 0.02, 6), FMAT.satinBlack), sx * (PL / 2 - 0.25), (PY + ROOM.H) / 2, 0));
+    pend.add(placed(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.012, 24), FMAT.satinBlack), sx * (PL / 2 - 0.25), ROOM.H - 0.006, 0));
+  }
+  pend.traverse(o => o.isMesh && (o.userData.noCollide = true));
+  return pend;
+}
+let PENDANT_DIFFUSER = null;
 
 /** The boardroom chair (seat 46 cm): one continuous upholstered shell in white leather, a polished four-star base on glides. */
 const SHELL_SEAT = 0.46;
@@ -851,12 +834,13 @@ function buildHoloMap(room) {
   const g = new THREE.Group();
   g.position.set(b.tx, DESK.top, b.tz);
   g.userData.keep = true;
-  const proj = holoProjector(0.5, 0.42);
+  // low over the stone (9.3): the table now stands before the main screen, so the county lies nearly flat and never crosses it
+  const proj = holoProjector(0.42, 0.16);
   g.add(proj);
   const mapMat = new THREE.MeshBasicMaterial({ map: holoMapTexture(), color: lin('#c9dbe6'), transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 1.15), mapMat);
-  plane.rotation.x = -HALF_PI + 0.42;
-  plane.position.y = 0.5;
+  plane.rotation.x = -HALF_PI + 0.16;
+  plane.position.y = 0.2;
   g.add(plane);
   // town pins rising from the map (focus towns)
   const pins = {};
@@ -1833,6 +1817,7 @@ function buildVestibule(room) {
 /* ---------- per-frame life in the architecture ---------------------------------- */
 
 function updateRoom(dt, t) {
+  if (typeof updateStudios === 'function') updateStudios(dt);
   if (ROOM_OBJ.boardSeats) for (const s of ROOM_OBJ.boardSeats) if (s.laptop) s.laptop.update(dt, t);
   for (const key of ['door', 'lift']) {
     const o = ROOM_OBJ[key];
@@ -1943,7 +1928,7 @@ function updateRoom(dt, t) {
   // Bergen County hovers; a town's pin flares when the hot sheet reports there
   const M = ROOM_OBJ.holoMap;
   if (M) {
-    M.plane.position.y = 0.5 + Math.sin(t * 0.7) * 0.01;
+    M.plane.position.y = 0.2 + Math.sin(t * 0.7) * 0.006;
     M.mapMat.opacity = 0.5 + Math.sin(t * 0.9) * 0.03;
     for (const [name, p] of Object.entries(M.pins)) {
       p.flare = Math.max(0, p.flare - dt * 0.25);

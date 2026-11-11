@@ -3,7 +3,7 @@
    -----------------------------------------------------------------------------
    Presentation only. Nobody sits idle at a desk: an agent that goes IDLE (or is
    paused) gets up after a moment and takes a seat in the lounge, round the
-   house model — and only when it is full, the Forum or the Market Room. A seat is reserved the
+   house model — and only when it is full, the Forum table. A seat is reserved the
    moment someone sets off for it, so no two agents ever take the same one, and
    the seat chosen is the one that faces whoever is already there (and needs the
    fewest knees stepped past). Seated together, they look at each other now and
@@ -53,13 +53,13 @@ function ambTick() {
       if (isBusy(a) && !m.confer && movingCount() < AMB.maxWalkers + 2) returnToDesk(id); // work always gets through
     }
   }
-  if (typeof conferTick === 'function') conferTick(); // shared work goes to the conference room
+  if (typeof conferTick === 'function') conferTick(); // shared work goes to the Forum table
   converse(now);
 }
 
 function destinationFree(key) {
   const D = DESTINATIONS[key];
-  if (key === 'board' && typeof sharedTaskOf === 'function' && OFFICE_STATE.tasks.some(t => t.column === 'progress' && t.with && t.with.length)) return false; // a meeting is on: the room is theirs
+  if ((key === 'board' || key === 'screen') && typeof sharedTaskOf === 'function' && OFFICE_STATE.tasks.some(t => t.column === 'progress' && t.with && t.with.length)) return false; // a meeting is on: the room is theirs
   if (D.seats) return D.seats().some(x => !x.taken);
   const nodes = Array.isArray(D.node) ? D.node : [D.node];
   return nodes.some(n => !OFFICE_STATE.order.some(o => AMB.agents[o] && AMB.agents[o].node === n && OFFICE_STATE.agents[o].location !== 'desk'));
@@ -100,7 +100,7 @@ function goSomewhere(id, forceKey) {
   const m = ambOf(id);
   let node = Array.isArray(D.node) ? null : D.node;
   let seat = null;
-  let extra = [];
+  let extra = D.extra ? D.extra() : [];
   if (D.seats) {
     seat = chooseSeat(D);
     if (!seat) return false;
@@ -281,7 +281,9 @@ function sitAtDesk(id) {
 const FOCAL = {
   lounge: () => (ROOM_OBJ.holoHouse ? ROOM_OBJ.holoHouse.group.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.45, 0)) : null),
   screen: () => new THREE.Vector3(ROOM.screen.x, ROOM.screen.y, ROOM.screen.z),
-  board: () => new THREE.Vector3(ROOM.hot.x, ROOM.hot.y, ROOM.hot.z),
+  board: () => new THREE.Vector3(ROOM.hot.x, ROOM.hot.y, ROOM.hot.z), // the hot sheet, on the studios' glass
+  design: () => new THREE.Vector3(4.3, 0.95, -4.2), // the drawings on the table
+  surfaces: () => new THREE.Vector3(7.75, 1.4, -4.45), // the library
 };
 function converse(now) {
   for (const id of OFFICE_STATE.order) {

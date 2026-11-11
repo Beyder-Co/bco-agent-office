@@ -32,15 +32,15 @@ const exitOffset = () => {
   const c = Math.cos(STATION_YAW), s = Math.sin(STATION_YAW);
   return [EXIT_LOCAL[0] * c + EXIT_LOCAL[1] * s, -EXIT_LOCAL[0] * s + EXIT_LOCAL[1] * c];
 };
-/** The Market Room: the aisle behind the watching chairs (halfway between the glass and the chair backs), and the step between two chairs. */
+/** The Forum table: its chairs are reached from the back aisle (BZ in buildNav), through the step between two chairs. */
 const BOARD_STEP = 0.5;
-const BOARD_AISLE_Z = () => (ROOM.board.zEdge + ROOM.board.tz + 0.84 + 0.25) / 2;
+const BOARD_AISLE_Z = () => -3.15;
 /** World x-extent of a station around its seat (desk, a chair pushed back, the figure). */
 const STATION_SPAN = [-0.6, 1.26];
 
 function buildNav() {
   const BZ = -3.15, MZ = 0.13, FZ = 3.2;
-  const OZ = ROOM.board.zEdge + 0.35, IZ = BOARD_AISLE_Z(); // outside and inside the Market Room's south glass
+  const OZ = ROOM.studios.zEdge + 0.35; // just outside the studios' south glass
   const S = ROOM.slots;
   const back = [0, 1, 2, 3, 9], front = [8, 4, 5, 6, 7];
   const [ex, ez] = exitOffset();
@@ -68,8 +68,9 @@ function buildNav() {
   back.forEach(i => mid.push(['M_x' + i, S[i].x + ex]));
   rowNodes('M', MZ, mid);
 
-  // the back aisle, west of the Market Room
+  // the back aisle, west of the studios; it passes behind the Forum table's chairs, a node at each step between them
   const bk = [['B_w', -6.55], ['B_srv', ROOM.server.x], ['B_fl', -2.0], ['B_fr', 2.0], ['B_e', 3.1]];
+  ROOM_OBJ.boardSeats.filter(s => s.side).forEach((s, i) => bk.push(['I_b' + (i + 1), s.x + BOARD_STEP]));
   backCor.forEach((x, k) => x < 3.05 && bk.push(['B_kb' + k, x]));
   rowNodes('B', BZ, bk);
 
@@ -92,19 +93,23 @@ function buildNav() {
   });
   frontCor.forEach((x, k) => navLink('M_kf' + k, 'F_kf' + k));
 
-  // the Market Room: in through the opening at its south-west corner
+  // the studios: each in through the opening at the west end of its south glass, from the walk along the outside of it
+  const SP = STUDIO_SPOTS;
   navNode('O_b0', 3.1, OZ);
-  navNode('O_b', 3.95, OZ);
+  navNode('O_b', SP.design.outside[0], OZ);
+  navNode('O_s', SP.surfaces.outside[0], OZ);
   navLink('B_e', 'O_b0');
   navLink('O_b0', 'O_b');
-  backCor.forEach((x, k) => x >= 3.05 && navLink('O_b', 'O_k' + k));
-  navNode('I_b0', 3.95, IZ);
-  navLink('O_b', 'I_b0');
-  const seatsIn = ROOM_OBJ.boardSeats.filter(s => s.side);
-  seatsIn.forEach((s, i) => {
-    navNode('I_b' + (i + 1), s.x + BOARD_STEP, IZ);
-    navLink(i ? 'I_b' + i : 'I_b0', 'I_b' + (i + 1));
+  backCor.forEach((x, k) => {
+    if (x < 3.05) return;
+    navLink('O_b', 'O_k' + k);
+    navLink('O_k' + k, 'O_s');
   });
+  if (!backCor.some(x => x >= 3.05)) navLink('O_b', 'O_s');
+  navNode('D_in', ...SP.design.inside);
+  navLink('O_b', 'D_in');
+  navNode('S_in', ...SP.surfaces.inside);
+  navLink('O_s', 'S_in');
 
   // the server cabinet, in the back-left corner: approach its east-facing rack from the back aisle
   navNode('SRV', ROOM.server.x, ROOM.server.z);
@@ -172,13 +177,10 @@ const seatFront = s => s.front || (s.area === 'lounge' ? (s.face <= 0 ? 0.82 : 0
 /** Places an idle agent may visit: where to sit or stand, how to face, what they do there, and the way in. */
 const DESTINATIONS = {
   server: { node: 'SRV', label: 'At the server cabinet', pose: 'look', face: ROOM.server.ry - HALF_PI, log: 'At the server cabinet — checking job health' },
+  // the Forum: a chair at the table, facing the main screen (the table's chairs are the Forum's seats since 9.3)
   screen: {
-    node: ['B_fl', 'B_fr'], seats: () => ROOM_OBJ.forumSeats, label: 'At the Forum', pose: 'watch', log: 'At the Forum — reading the main screen',
-    // round the outer end of the bench, then in front of it, then sit
-    approach: s => {
-      const e = s.x < 0 ? -2.0 : 2.0;
-      return [[e, -3.7], [e, -5.32], [s.x, -5.32], frontOf(s, seatFront(s))];
-    },
+    node: ['I_b1', 'I_b2', 'I_b3'], seats: () => ROOM_OBJ.forumSeats, label: 'At the Forum', pose: 'watch', log: 'At the Forum — reading the main screen',
+    approach: s => [[s.x + BOARD_STEP, s.z]],
   },
   lounge: {
     node: ['L1', 'F_lc'], seats: () => ROOM_OBJ.loungeSeats, label: 'In the lounge', pose: 'review', log: 'In the lounge — reviewing the house model with the team',
@@ -192,11 +194,16 @@ const DESTINATIONS = {
     },
   },
   board: {
-    node: ['I_b1', 'I_b2', 'I_b3'], seats: () => ROOM_OBJ.boardSeats.filter(s => s.side), label: 'In the Market Room', pose: 'meet', log: 'Market Room — reading the pipeline',
-    // along the aisle behind the chairs and into the gap beside the chosen one; the table is too close to stand in
-    // front of it, so the sitter lowers sideways from the gap onto the seat (and rises back into the gap)
-    approach: s => [[s.x + BOARD_STEP, BOARD_AISLE_Z()], [s.x + BOARD_STEP, s.z]],
+    node: ['I_b1', 'I_b2', 'I_b3'], seats: () => ROOM_OBJ.boardSeats.filter(s => s.side), label: 'At the Forum table', pose: 'meet', log: 'At the Forum table — reading the hot sheet',
+    // from the back aisle into the gap beside the chosen chair; the table is too close to stand in front of it, so the
+    // sitter lowers sideways from the gap onto the seat (and rises back into the gap)
+    approach: s => [[s.x + BOARD_STEP, s.z]],
   },
+  // the studios: one visitor at a time stands at the drawings, or at the materials library
+  design: { node: 'D_in', label: 'In B&Co. Design | Build', pose: 'look', face: STUDIO_SPOTS.design.face, log: 'B&Co. Design | Build — reviewing the drawings',
+    extra: () => [STUDIO_SPOTS.design.stand] },
+  surfaces: { node: 'S_in', label: 'In B&Co. Surfaces', pose: 'look', face: STUDIO_SPOTS.surfaces.face, log: 'B&Co. Surfaces — pulling samples',
+    extra: () => [STUDIO_SPOTS.surfaces.stand] },
 };
 
 /* ---------- movement: local avoidance, keep-right passing, the walking high five ---------- */
@@ -250,10 +257,12 @@ function bodyOf(f) {
   }
   return { ax: _bp.x, az: _bp.z, bx: _bp.x, bz: _bp.z, seated: false, f };
 }
-/** Places too narrow for two bots to pass (the Market Room: the aisle behind its chairs and the gaps between them).
+/** Places too narrow for two bots to pass: the gaps between the Forum table's chairs, and each studio.
  *  One walker at a time inside; anyone else about to enter waits outside until it is clear. */
 const SINGLE_FILE = [
-  { id: 'board', test: (x, z) => x > ROOM.board.x0 + 0.05 && z < ROOM.board.zEdge - 0.05 && z > ROOM.z0 + 0.3 },
+  { id: 'board', test: (x, z) => Math.abs(x - ROOM.board.tx) < 2.3 && z < -3.32 && z > ROOM.board.tz - 0.2 },
+  { id: 'design', test: (x, z) => x > ROOM.studios.x0 + 0.05 && x < ROOM.studios.xm && z < ROOM.studios.zEdge - 0.05 && z > ROOM.z0 + 0.3 },
+  { id: 'surfaces', test: (x, z) => x > ROOM.studios.xm && z < ROOM.studios.zEdge - 0.05 && z > ROOM.z0 + 0.3 },
 ];
 const zoneAt = (x, z) => SINGLE_FILE.find(Z => Z.test(x, z)) || null;
 

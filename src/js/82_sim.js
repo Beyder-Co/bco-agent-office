@@ -45,7 +45,7 @@ const PLAYBOOK = {
         undo: 'Reversible: Vercel can roll back to the previous deployment.',
       },
     }],
-    go: ['screen', 'lounge', 'tree'],
+    go: ['design', 'surfaces', 'screen', 'lounge', 'tree'],
   },
   engineer: {
     tasks: [
@@ -83,7 +83,7 @@ const PLAYBOOK = {
         ifDecline: "The plan stays with Strategist. Current priorities stand.",
       },
     }],
-    go: ['board', 'lounge', 'screen'],
+    go: ['board', 'design', 'lounge', 'screen'],
   },
   analyst: {
     tasks: [
@@ -138,7 +138,7 @@ const PLAYBOOK = {
         undo: 'Reversible: the videos can be set back to private.',
       },
     }],
-    go: ['lounge', 'screen', 'tree'],
+    go: ['lounge', 'surfaces', 'screen', 'tree'],
   },
   // the study (TEST sample only: a personal runtime is never simulated as connected)
   attache: {
@@ -197,7 +197,7 @@ const PLAYBOOK = {
     go: ['screen', 'lounge', 'tree'],
   },
 };
-/** Work that takes two or three lanes at once. Whoever is on it meets in the conference room (the Market Room). */
+/** Work that takes two or three lanes at once. Whoever is on it meets at the Forum table. */
 const JOINT = [
   { title: 'Journal template — Builder and Engineer pair on it', lead: 'builder', with: ['engineer'], steps: [['coding', 'Pairing on the journal index template'], ['browsing', 'Walking through the diff together'], ['coding', 'Fixing image dimensions in the template'], ['browsing', 'Watching the checks pass together']] },
   { title: 'November SEO kickoff', lead: 'strategist', with: ['publisher', 'scout'], steps: [['browsing', 'Reading the November targets together'], ['coding', 'Splitting the briefs by town'], ['browsing', 'Checking each brief against §22'], ['coding', 'Setting owners and dates']] },
@@ -404,7 +404,7 @@ function startJoint(now, def = null) {
       moveTask(s.task.id, 'queued');
     }
     const others = members.filter(m => m !== id).map(m => OFFICE_STATE.agents[m].name.charAt(0) + OFFICE_STATE.agents[m].name.slice(1).toLowerCase());
-    pushLog(id, `Started — ${J.title} (with ${others.join(' and ')}, in the conference room)`, 'task');
+    pushLog(id, `Started — ${J.title} (with ${others.join(' and ')}, at the Forum table)`, 'task');
     Object.assign(s, { joint: task.id, task, steps: J.steps, i: 0, stuckUsed: true });
     if (id === J.lead) beginStep(id, s, now);
     else {
@@ -482,7 +482,7 @@ function startNextTask(id, s, now) {
   s.parked = null;
   const mine = OFFICE_STATE.tasks.find(t => t.agentId === id && t.column === 'queued' && t.assigned);
   if (mine && mine.with && mine.with.length) {
-    // a task for several agents: they take it to the conference room together
+    // a task for several agents: they take it to the Forum table together
     if (mine.with.every(jointFree)) return void startJoint(now, { title: mine.title, lead: id, with: mine.with, steps: assignedSteps(mine.title), existing: mine });
     s.until = now + simDur(4, 8); // someone it needs is busy: try again shortly
     return;

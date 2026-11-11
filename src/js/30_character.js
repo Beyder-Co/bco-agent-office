@@ -151,7 +151,7 @@ const POSES = {
     o.headYaw = Math.sin(t * 0.21 + ph) * 0.1;
     o.footZ = 0.52;
   },
-  /** At the Market Room table: upright, hands resting on the table's edge (solved in update), eyes on the wall screen. */
+  /** At the Forum table: upright, hands resting on the table's edge (solved in update), eyes on the wall screen. */
   meet(o, t, ph) {
     Object.assign(o, SEATED);
     o.lean = 0.04;
@@ -2678,7 +2678,7 @@ class Figure {
     const typed = typing && this._typeGoal(g, t, dt);
     this.typK = damp(this.typK, typed ? 1 : 0, typed ? 10 : 7, dt);
     if (mode === 'meet' && !atHome) {
-      // hands rest on the edge of the Market Room table (its top is a desk's height above the floor)
+      // hands rest on the edge of the Forum table (its top is a desk's height above the floor)
       for (const side of [1, -1]) {
         const Tg = this._v.set(side * (0.145 + Math.sin(t * 0.37 + this.phase + side) * 0.008), DESK.top + 0.05 - this.root.position.y, 0.4);
         const s = this.solveArm(side, Tg, g);
@@ -2708,7 +2708,7 @@ class Figure {
     this.spread.R = damp(this.spread.R, fiveR ? 1 : 0, 14, dt);
     this._attention(g, t, dt, seated, typing, atHome);
     if (atHome && seated && mode === 'done') this._handsBehindHead(g); // (after the head has turned to whatever it is watching)
-    // in a seat away from the desk (sofa, armchairs, benches, the Market Room): elbows in, clear of the chair's arms and
+    // in a seat away from the desk (sofa, armchairs, benches, the Forum table): elbows in, clear of the chair's arms and
     // wraparound backs; on a soft cushion the body rides a touch higher (it sinks in only a little)
     const away = seated && !atHome;
     const soft = away && this.root.position.y < -0.04;
@@ -2910,7 +2910,7 @@ class Figure {
     const H = this.hov;
     if (H.k > 0.001) {
       const k = H.k;
-      if (seated && this.mode !== 'meet') g.lean = lerp(g.lean, Math.min(g.lean, -0.12), k); // (at the Market Room table the hands stay on its edge)
+      if (seated && this.mode !== 'meet') g.lean = lerp(g.lean, Math.min(g.lean, -0.12), k); // (at the Forum table the hands stay on its edge)
       if (seated && !typing && !atHome && !['sofa', 'review', 'watch', 'meet'].includes(this.mode)) {
         g.shLx = lerp(g.shLx, -0.22, k * 0.6); g.shRx = lerp(g.shRx, -0.22, k * 0.6);
         g.elLx = lerp(g.elLx, -0.95, k * 0.6); g.elRx = lerp(g.elRx, -0.95, k * 0.6);
