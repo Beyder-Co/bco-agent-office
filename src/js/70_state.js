@@ -290,7 +290,7 @@ function replyToGate(gateId, message) {
 
 const REPEATS = { once: 'Once', daily: 'Every day', weekdays: 'Every weekday', weekly: 'Every week' };
 /** Hand an agent new work (queued) or a standing job (also listed under RUNNING). */
-/** Everyone on a task: its owner first, then whoever works it with them. Two or more = they meet in the conference room. */
+/** Everyone on a task: its owner first, then whoever works it with them. Two or more = they meet at the Forum table. */
 const taskMembers = t => (t ? [t.agentId].concat(t.with || []) : []);
 /** The shared task an agent is working right now, if any. */
 const sharedTaskOf = id => OFFICE_STATE.tasks.find(t => t.column === 'progress' && t.with && t.with.length && taskMembers(t).includes(id)) || null;

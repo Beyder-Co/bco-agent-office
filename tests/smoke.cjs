@@ -79,6 +79,14 @@ server.listen(0, '127.0.0.1', async () => {
       return { terrace: !!TERRACE.group && TERRACE.grass.count > 100, boats: CITY.BOATS.list.length, moved: CITY.BOATS.mesh.instanceMatrix.array[12] !== p0 && SKY.common.uTime.value > t0 };
     });
     check(ext.terrace, 'the roof terrace is built with its planting');
+    // 9.3: the studios replace the Market Room; shared work and the hot sheet are at the Forum
+    const st = await page.evaluate(() => ({
+      built: !!scene.getObjectByName('studios') && !!ROOM_OBJ.rendering,
+      forum: ROOM_OBJ.forumSeats.length === 3 && ROOM_OBJ.forumSeats.every(s => ROOM_OBJ.boardSeats.includes(s) && Math.abs(s.x - ROOM.board.tx) < 1.5),
+      hot: (() => { const p = ROOM_OBJ.panels.find(p => p.key === 'pipeline'); return !!p && p.group.position.x < ROOM.studios.x0 && Math.abs(p.group.rotation.y + Math.PI / 2) < 1e-6; })(),
+      ways: ['design', 'surfaces'].every(k => DESTINATIONS[k] && navPath('B_w', DESTINATIONS[k].node) && !blockedAt(...STUDIO_SPOTS[k].stand) && lineFree(...STUDIO_SPOTS[k].inside, ...STUDIO_SPOTS[k].stand)),
+    }));
+    check(st.built && st.forum && st.hot && st.ways, 'the studios stand in the north-east; the Forum table and the hot sheet are at the Forum (' + JSON.stringify(st) + ')');
     check(ext.boats >= 3 && ext.moved, 'vessels run the river');
     // 3 · round three: going through what needs you, next agent, screens in the address bar, ripples, the away card
     await page.evaluate(() => { requestApproval('builder', 'Publish the TEST landing page', { simulated: true }); setAgentStatus('builder', 'WAITING', { detail: 'TEST' }); });

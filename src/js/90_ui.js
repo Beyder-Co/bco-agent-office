@@ -641,8 +641,10 @@ const UI = {
     const queued = OFFICE_STATE.tasks.filter(t => t.agentId === a.id && t.column === 'queued' && (!live || t.assigned));
     const gates = OFFICE_STATE.approvals.filter(g => g.agentId === a.id);
     const amb = AMB.agents[a.id];
-    const where = a.location === 'walking' && amb && amb.phase === 'out' && DESTINATIONS[amb.key] ? `walking to the ${DESTINATIONS[amb.key].label.replace(/^(At the|In the|Under the) /, '').toLowerCase()}`
-      : DESTINATIONS[a.location] && !isBusy(a) ? DESTINATIONS[a.location].label.toLowerCase() : '';
+    // (a studio keeps its name's capitals: B&Co. Design | Build, B&Co. Surfaces)
+    const placeName = l => (/B&Co\./.test(l) ? l.replace(/^In /, '') : 'the ' + l.replace(/^(At the|In the|Under the) /, '').toLowerCase());
+    const where = a.location === 'walking' && amb && amb.phase === 'out' && DESTINATIONS[amb.key] ? `walking to ${placeName(DESTINATIONS[amb.key].label)}`
+      : DESTINATIONS[a.location] && !isBusy(a) ? (/B&Co\./.test(DESTINATIONS[a.location].label) ? 'in ' + placeName(DESTINATIONS[a.location].label) : DESTINATIONS[a.location].label.toLowerCase()) : '';
     const failing = live && OFFICE_STATE.fleet ? (OFFICE_STATE.fleet.jobs || []).find(j => j.agent === a.id && j.ok === false) : null;
     const raisedNow=typeof COORDINATION_GESTURES!=='undefined' && COORDINATION_GESTURES.waiting.has(a.id);
     const coordinating=a.id==='crimson' && typeof OFFICE_COMMAND_UI!=='undefined' ? OFFICE_COMMAND_UI.rows.filter(r=>['received','working','attempt_failed'].includes(r.state)).length : 0;
@@ -1624,7 +1626,7 @@ const UI = {
         ${row('A', 'Go through what needs you, one at a time')}
         ${row('L', 'Copy a link to what is open')}
         ${row('O D N', 'Overview · Desks · The Hudson')}
-        ${row('M W H', 'Market Room · Data Wall · Hot list')}
+        ${row('M W H', 'Studios · Data Wall · Hot list')}
         ${row('B', 'Crew task board')}
         ${row('S', 'Main screen, full size')}
         ${row('← → ↑ ↓', 'Turn round the room (the room must have focus)')}

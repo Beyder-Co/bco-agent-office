@@ -936,7 +936,7 @@ const KEY_HANDS = (() => {
   return { L, R, space: KEY_LAYOUT.flat().findIndex(([l]) => l === '') };
 })();
 
-/* ---------- the laptop: closed until someone sits down to it (the Market Room) ---------- */
+/* ---------- the laptop: closed until someone sits down to it (the Forum table) ---------- */
 
 const LAPTOP = { w: 0.3126, d: 0.2212, base: 0.0095, lid: 0.006, open: 1.86, pitch: 0.0178 };
 /**

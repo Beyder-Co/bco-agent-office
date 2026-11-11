@@ -5,7 +5,7 @@
   const GROUPS = {system:'System attention',overdue:'Overdue follow-up',approval:'Prepared for review',today:'Due today',appointment:'Appointments',lead:'New leads'};
   const KIND = {view:'Property views',save:'Saved properties',inquiry:'Inquiries',page:'Website visits',email:'Email opens',click:'Email clicks',text_in:'Inbound texts',text_out:'Outbound texts',lead:'New leads'};
   const SCREEN = {main:'Activity and highlights',today:'Follow-ups and leads',pipeline:'Pipeline and dates',hotnew:'NJMLS new and open',hotdone:'NJMLS price and sold',ticker:'Market rates',study:'The study board',manual:'Operating manual'};
-  const CAMERAS = {overview:'Office overview',hudson:'Hudson view',desks:'Agent desks',boardroom:'Market room',datawall:'Data wall',hotlist:'Hot list',screen:'Forum screen',server:'Server cabinet',door:'Office entrance',lounge:'Left lounge',study:'The study'};
+  const CAMERAS = {overview:'Office overview',hudson:'Hudson view',desks:'Agent desks',boardroom:'Studios: Design | Build and Surfaces',datawall:'Data wall',hotlist:'Hot list',screen:'Forum screen',server:'Server cabinet',door:'Office entrance',lounge:'Left lounge',study:'The study'};
   const W = {tab:'brief',query:'',group:'all',kind:'all',hours:'all',commandIndex:0,returnFocus:null};
   const html = value => String(value == null ? '' : value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const finite = v => typeof v === 'number' && Number.isFinite(v);
@@ -59,7 +59,7 @@
     const statusValue=v=>['ok','quiet','starting','missing','stale','error','auth','rate','attention','live','awaiting','partial','unconfigured'].includes(v)?v:'unknown';
     const counts = obj => Object.fromEntries(Object.entries(obj||{}).filter(([k,v])=>['listings','underContract','closing30','closedYTD','offers','offMarket','buyerContracts','system','overdue','approval','today','appointment','lead','engaged','reengaged','slipping'].includes(k)&&numeric(v)!==null));
     return {schema:'bco.agent-office.operational-snapshot/v1',generatedAt:new Date().toISOString(),timeZone:ET,testData:test(),
-      version:{page:'9.2.0',bridge:/^\d+\.\d+\.\d+$/.test(br.version||'')?br.version:null,build:/^[a-f0-9]{20}$/.test(window.BCO_BUILD||'')?window.BCO_BUILD:null},
+      version:{page:'9.3.0',bridge:/^\d+\.\d+\.\d+$/.test(br.version||'')?br.version:null,build:/^[a-f0-9]{20}$/.test(window.BCO_BUILD||'')?window.BCO_BUILD:null},
       connection:['live','offline','simulated','standby'].includes(s.meta.feed)?s.meta.feed:'unknown',
       sources:Object.fromEntries(feedNames.map(k=>[k,{state:statusValue(br.feeds?.[k]?.state),asOf:iso(br.feeds?.[k]?.asOf)}])),
       panels:Object.fromEntries(Object.entries(p).filter(([k])=>['today','pipeline','buyers','feed','highlights','needs'].includes(k)).map(([k,v])=>[k,{state:state(v),asOf:iso(v.asOf)}])),

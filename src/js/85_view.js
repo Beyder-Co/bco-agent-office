@@ -1178,7 +1178,7 @@ function drawTodayLeads(ctx, W, H, detail) {
   }
 }
 
-/* ---------- Pipeline (Market Room): stage counts, the next critical dates ---------- */
+/* ---------- Pipeline (the hot sheet, at the Forum): stage counts, the next critical dates ---------- */
 
 function drawPipeline(ctx, W, H, detail) {
   const M = 80;
@@ -1224,7 +1224,7 @@ function drawPipeline(ctx, W, H, detail) {
   });
 }
 
-/* ---------- the ticker (top of the Market Room glass): live client activity and rates ---------- */
+/* ---------- the ticker (the band round the top of the glass): live client activity and rates ---------- */
 
 const TICKER = { rebuild: true, strip: null, tex: null, off: 0, aspect: 1, page: 0, pageT: 0, speed: 0.27, px: 320, metres: 1 }; // speed: metres a second along the walls
 const TICK_TYPE = 0.62; // the ticker's type against the strip's height

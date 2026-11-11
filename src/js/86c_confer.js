@@ -1,9 +1,9 @@
 /* =============================================================================
-   86c · THE CONFERENCE ROOM — shared work happens together
+   86c · SHARED WORK AT THE FORUM TABLE — shared work happens together
    -----------------------------------------------------------------------------
    Igor's standing rule: when more than one agent is working on the same task,
-   they all go into the conference room (the Market Room) and work on it there,
-   together. Each takes a chair at the table and works on the laptop set at its
+   they all go to the Forum table (9.3: the Market Room became the two studios,
+   B&Co. Design | Build and B&Co. Surfaces) and work on it there, together. Each takes a chair at the table and works on the laptop set at its
    place, which opens as it sits down. When the task is done the laptops close
    and everyone goes back to their own desk. Idle visitors make way for a meeting.
    ============================================================================= */
@@ -39,7 +39,7 @@ function conferMakeRoom() {
     const o = s.taken;
     if (!o || !OFFICE_STATE.agents[o]) continue;
     const m = AMB.agents[o];
-    if (m && !m.confer && m.phase === 'away' && !MOVE.walkers[o] && OFFICE_STATE.agents[o].location === 'board') returnToDesk(o);
+    if (m && !m.confer && m.phase === 'away' && !MOVE.walkers[o] && ['board', 'screen'].includes(OFFICE_STATE.agents[o].location)) returnToDesk(o);
   }
 }
 
@@ -125,7 +125,7 @@ function conferPose(id) {
   w.fig.setMode(a.status === 'WORKING' ? (a.activity === 'browsing' ? 'browse' : 'type') : a.status === 'THINKING' ? 'think' : a.status === 'DONE' ? 'done' : 'meet');
 }
 
-/** Is anyone on the way into or out of the Market Room right now? Its aisle takes one at a time. */
+/** Is anyone on the way to or from the Forum table right now? The steps between its chairs take one at a time. */
 const boardTraffic = () => OFFICE_STATE.order.some(o => {
   const m = AMB.agents[o];
   return m && m.key === 'board' && (m.starting || (MOVE.walkers[o] && (m.phase === 'out' || m.phase === 'back')));
