@@ -62,7 +62,7 @@ try:
 except Exception:  # pragma: no cover - zoneinfo ships with 3.9+
     ET = timezone(timedelta(hours=-5))
 
-VERSION = "1.7.2"
+VERSION = "1.7.3"
 PAGE_VERSION = "9.2.0"
 HOME = Path.home()
 
@@ -3656,9 +3656,10 @@ class FubPoller:
             key = (task.get("id"),str(revision),nid,pid)
             keys[key] = nid
         missing = {nid: wanted[nid] for key,nid in keys.items() if key not in self.approval_cache}
-        if len(missing)>12:raise FubError("approval draft check exceeds minute budget; source held")
         fetched = {}
-        for nid,pid in missing.items():
+        # At most 12 note reads per minute. A larger backlog fills over several cycles: verified drafts are
+        # kept, and the source stays held until every draft is verified, so a partial set is never shown.
+        for nid,pid in list(missing.items())[:12]:
             try:
                 note = self.fub.get(f"/notes/{nid}")
                 if note.get("personId") != pid or note.get("personId") in ACCESS_HOLD_IDS:
@@ -3666,6 +3667,9 @@ class FubPoller:
                 fetched[nid] = {"body":note.get("body") or "", "subject":note.get("subject") or ""}
             except FubRateLimited:raise
             except FubError as exc:raise FubError("approval draft unavailable ("+str(exc)+")") from None
+        if len(fetched) < len(missing):
+            self.approval_cache.update({key:fetched[nid] for key,nid in keys.items() if nid in fetched})
+            raise FubError(f"approval drafts loading ({len(missing)-len(fetched)} left); source held")
         # Commit atomically after every requested draft is verified; removed tasks lose their cached drafts.
         self.approval_cache = {key:fetched[nid] if nid in fetched else self.approval_cache[key] for key,nid in keys.items()}
         self.notes = {nid:self.approval_cache[key] for key,nid in keys.items()}

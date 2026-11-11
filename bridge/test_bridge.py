@@ -1781,7 +1781,7 @@ class BackendHTTPV85(unittest.TestCase):
     def test_diagnostics_and_health_are_private_uncached_and_truthful(self):
         health=self.request('/health');data=json.loads(health[2]);self.assertTrue(data['ok']);self.assertFalse(data['readiness']['ready'])
         diag=self.request('/diagnostics');d=json.loads(diag[2]);self.assertEqual(diag[1]['Cache-Control'],'no-store');self.assertIn('transitions',d)
-        self.assertNotIn('snapshot',d);self.assertNotIn('note',json.dumps(d));self.assertEqual(d['version'],'1.7.2')
+        self.assertNotIn('snapshot',d);self.assertNotIn('note',json.dumps(d));self.assertEqual(d['version'],'1.7.3')
         self.assertEqual(self.request('/diagnostics',headers={'Host':'evil.example'})[0],403)
 
 

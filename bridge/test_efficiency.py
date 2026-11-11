@@ -84,6 +84,16 @@ class SourceCaching(unittest.TestCase):
         for _ in range(60):self.p._notes_for(tasks)
         self.assertEqual(self.fub.get.call_count,7) # old behavior: 7*60=420
 
+    def test_draft_backlog_over_budget_fills_across_cycles(self):
+        # Nov 9 2026: 13+ due drafts held the FUB feed forever, because every cycle restarted from zero.
+        self.fub.get.return_value=dict(personId=990003,body='TEST draft')
+        tasks=[self.task(task_id=993000+i,note_id=994000+i) for i in range(20)]
+        with self.assertRaises(B.FubError):self.p._notes_for(tasks)
+        self.assertEqual(self.p.notes,{}) # nothing shown while drafts are still unverified
+        self.p._notes_for(tasks)
+        self.assertEqual(self.fub.get.call_count,20)
+        self.assertEqual(len(self.p.notes),20)
+
 class DisplaySafety(unittest.TestCase):
     def setUp(self):self.hub=B.Hub();self.client=Mock()
     def report(self,at=1000,**values):
